@@ -44,7 +44,6 @@ class Server extends EventEmitter {
 
     this.peersCacheLength = opts.peersCacheLength
     this.peersCacheTtl = opts.peersCacheTtl
-    this.listening = false
     this.destroyed = false
     this.torrents = {}
 
@@ -109,7 +108,7 @@ class Server extends EventEmitter {
     this.http.on('upgrade', this.handleUpgrade)
 
     this.ws.address = () => {
-      if(this.listening){
+      if(this.http.listening){
         return this.http.address()
       } else {
         return null
@@ -164,7 +163,6 @@ class Server extends EventEmitter {
   }
 
   onListening () {
-    this.listening = true
     debug('listening')
     this.emit('listening')
   }
@@ -379,7 +377,7 @@ class Server extends EventEmitter {
   }
 
   listen (){
-    if(this.listening){
+    if(this.http.listening){
       throw new Error('server already listening')
       // return
     } else {
@@ -392,7 +390,6 @@ class Server extends EventEmitter {
   close () {
     debug('close')
 
-    this.listening = false
     this.destroyed = true
 
     try {
@@ -407,7 +404,7 @@ class Server extends EventEmitter {
         console.error(err)
       })
     } catch (error) {
-      
+      console.error(error)
     }
   }
 
