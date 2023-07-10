@@ -91,9 +91,18 @@ class Server extends EventEmitter {
     this.status = {cpu: 0, mem: 0, state: null}
 
     // start a websocket tracker (for WebTorrent) unless the user explicitly says no
+    const self = this
     this.http = http.createServer()
+    // this.http.onUpgrade = () => {}
+    // this.http.onError = () => {}
+    this.http.onListening = () => {
+      debug('listening')
+      self.emit('listening')
+    }
+    // this.http.onRequest = () => {}
+    // this.http.onClose = () => {}
     this.http.on('error', this._onError)
-    this.http.on('listening', this.onListening)
+    this.http.on('listening', this.http.onListening)
     this.http.on('request', this.handleRequest)
 
     // Add default http request handler on next tick to give user the chance to add
@@ -163,9 +172,8 @@ class Server extends EventEmitter {
   }
 
   onListening () {
-    console.log('listening')
     debug('listening')
-    // this.emit('listening')
+    console.log('listening')
   }
 
   handleRequest(req, res){
@@ -368,7 +376,7 @@ class Server extends EventEmitter {
     const self = this
     setTimeout(function() {
       self.compute(function() {
-        self.interval(time)
+        self.intervalUsage(time)
       })
     }, time)
   }
