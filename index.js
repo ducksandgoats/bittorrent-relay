@@ -163,9 +163,9 @@ class Server extends EventEmitter {
   }
 
   onListening () {
-    console.log('hello')
+    console.log('listening')
     debug('listening')
-    this.emit('listening')
+    // this.emit('listening')
   }
 
   handleRequest(req, res){
