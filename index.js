@@ -25,8 +25,13 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  *
  * @param {Object}  opts                options object
  * @param {Number}  opts.announceTimer       tell clients to announce on this interval (ms)
+ * @param {Number}  opts.relayTimer       interval to find and connect to other trackers (ms)
+ * @param {Number}  opts.dhtPort      port used for the dht
+ * @param {Number}  opts.trackerPort     port used for the tracker
+ * @param {String}  opts.dhtHost     host used for the dht
+ * @param {String}  opts.trackerHost     host used for the tracker
+ * @param {Boolean}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
  */
-// * @param {Number}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
 
 class Server extends EventEmitter {
   constructor (opts = {}) {
@@ -48,20 +53,40 @@ class Server extends EventEmitter {
 
     // this.cpuLimit = 100
     // this.memLimit = 1700000000
-    this.timer = (opts.relayTimer || 900) * 1000
-    this.DHTPORT = opts.DHTPORT || 16881
-    this.RELAYPORT = opts.RELAYPORT || 16969
-    this.hashes = (() => {if(!opts.hashes){throw new Error('must have hashes')}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',')})()
+    this.timer = opts.relayTimer ? opts.relayTimer : 15 * 60 * 1000
+    this.DHTPORT = opts.dhtPort || 16881
+    this.TRACKERPORT = opts.trackerPort || 16969
+    this.DHTHOST = opts.dhtHost || '0.0.0.0'
+    this.TRACKERHOST = opts.trackerHost || '0.0.0.0'
+    this.hashes = (() => {if(!opts.hashes){return [];}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',');})()
     this.relays = this.hashes.map((data) => {return crypto.createHash('sha1').update(data + "'s").digest('hex')})
+    this.userHashes = this.hashes.length ? true : false
     // this._trustProxy = !!opts.trustProxy
-    this._trustProxy = true
+    this._trustProxy = opts.trustProxy === false ? opts.trustProxy : true
     // if (typeof opts.filter === 'function') this._filter = opts.filter
     this._filter = function (infoHash, params, cb) {
       // const hashes = (() => {if(!opts.hashes){throw new Error('must have hashes')}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',')})()
-      if(this.hashes.includes(infoHash)){
-        cb(null)
+      if(this.userHashes){
+        if(this.hashes.includes(infoHash)){
+          cb(null)
+        } else {
+          cb(new Error('disallowed torrent'))
+        }
       } else {
-        cb(new Error('disallowed torrent'))
+        if(this.hashes.includes(infoHash)){
+          cb(null)
+        } else {
+          this.hashes.push(infoHash)
+          const testHash = crypto.createHash('sha1').update(infoHash + "'s").digest('hex')
+          this.relays.push(testHash)
+          this.dht.lookup(testHash, (err, num) => {
+            console.log(err, num)
+          })
+          this.dht.announce(testHash, this.TRACKERPORT, (err) => {
+              console.log(err)
+          })
+          cb(null)
+        }
       }
     }
     this.status = {cpu: 0, mem: 0, state: null}
@@ -105,7 +130,7 @@ class Server extends EventEmitter {
     this.intervalUsage(60000)
 
     this.dht = new DHT()
-    this.dht.listen(this.DHTPORT, '0.0.0.0', () => {
+    this.dht.listen(this.DHTPORT, this.DHTHOST, () => {
       console.log('listening')
     })
 
@@ -132,7 +157,7 @@ class Server extends EventEmitter {
       this.dht.lookup(test, (err, num) => {
           console.log(err, num)
       })
-      this.dht.announce(test, this.RELAYPORT, (err) => {
+      this.dht.announce(test, this.TRACKERPORT, (err) => {
           console.log(err)
       })
     }
@@ -307,7 +332,7 @@ class Server extends EventEmitter {
             self.http.on('listening', self.onListening)
             self.http.on('request', self.handleRequest)
             self.http.on('upgrade', self.handleUpgrade)
-            self.http.listen(self.relayPort, '0.0.0.0', undefined, () => {
+            self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined, () => {
               console.log('listening')
             })
           }
@@ -318,7 +343,7 @@ class Server extends EventEmitter {
             self.http.on('listening', self.onListening)
             self.http.on('request', self.handleRequest)
             self.http.on('upgrade', self.handleUpgrade)
-            self.http.listen(self.relayPort, '0.0.0.0', undefined, () => {
+            self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined, () => {
               console.log('listening')
             })
           }
@@ -358,7 +383,7 @@ class Server extends EventEmitter {
       throw new Error('server already listening')
       // return
     } else {
-      this.http.listen(this.relayPort, '0.0.0.0', undefined, () => {
+      this.http.listen(this.TRACKERPORT, this.TRACKERHOST, undefined, () => {
         console.log('listening')
       })
     }
