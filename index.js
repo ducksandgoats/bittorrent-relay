@@ -163,6 +163,7 @@ class Server extends EventEmitter {
   }
 
   onListening () {
+    console.log('hello')
     debug('listening')
     this.emit('listening')
   }
