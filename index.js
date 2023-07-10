@@ -289,13 +289,13 @@ class Server extends EventEmitter {
 
     this.dht = new DHT()
     this.dht.onListening = () => {
-      self.emit('listening')
+      self.emit('relay-listening')
     }
     this.dht.onReady = () => {
-      self.emit('ready')
+      self.emit('relay-ready')
     }
     this.dht.onError = (err) => {
-      self.emit('error', err)
+      self.emit('relay-error', err)
     }
     this.dht.on('ready', this.dht.onReady)
     this.dht.on('listening', this.dht.onListening)
