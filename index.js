@@ -418,7 +418,9 @@ class Server extends EventEmitter {
     const self = this
     try {
       this.http.close((err) => {
-        self.emit('error', err)
+        if(err){
+          self.emit('error', err)
+        }
       })
     } catch (error) {
       this.emit('error', error)
