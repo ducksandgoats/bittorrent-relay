@@ -288,9 +288,19 @@ class Server extends EventEmitter {
     this.intervalUsage(60000)
 
     this.dht = new DHT()
-    this.dht.listen(this.DHTPORT, this.DHTHOST, () => {
-      console.log('listening')
-    })
+    this.dht.onListening = () => {
+      self.emit('listening')
+    }
+    this.dht.onReady = () => {
+      self.emit('ready')
+    }
+    this.dht.onError = (err) => {
+      self.emit('error', err)
+    }
+    this.dht.on('ready', this.dht.onReady)
+    this.dht.on('listening', this.dht.onListening)
+    this.dht.on('error', this.dht.onError)
+    this.dht.listen(this.DHTPORT, this.DHTHOST)
 
     this.trackers = new Map()
     
@@ -345,9 +355,7 @@ class Server extends EventEmitter {
             self.http.on('listening', self.http.onListening)
             self.http.on('request', self.http.handleRequest)
             self.http.on('upgrade', self.http.handleUpgrade)
-            self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined, () => {
-              console.log('listening')
-            })
+            self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined)
           }
           self.status = {cpu: stats.cpu, mem: stats.memory, state: 2}
         } else {
@@ -356,9 +364,7 @@ class Server extends EventEmitter {
             self.http.on('listening', self.http.onListening)
             self.http.on('request', self.http.handleRequest)
             self.http.on('upgrade', self.http.handleUpgrade)
-            self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined, () => {
-              console.log('listening')
-            })
+            self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined)
           }
           self.status = {cpu: stats.cpu, mem: stats.memory, state: 1}
         }
@@ -392,9 +398,7 @@ class Server extends EventEmitter {
       throw new Error('server already listening')
       // return
     } else {
-      this.http.listen(this.TRACKERPORT, this.TRACKERHOST, undefined, () => {
-        console.log('listening')
-      })
+      this.http.listen(this.TRACKERPORT, this.TRACKERHOST, undefined)
     }
   }
 
