@@ -355,7 +355,7 @@ class Server extends EventEmitter {
             self.http.on('listening', self.http.onListening)
             self.http.on('request', self.http.handleRequest)
             self.http.on('upgrade', self.http.handleUpgrade)
-            self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined)
+            self.http.listen(self.TRACKERPORT, self.TRACKERHOST)
           }
           self.status = {cpu: stats.cpu, mem: stats.memory, state: 2}
         } else {
@@ -364,7 +364,7 @@ class Server extends EventEmitter {
             self.http.on('listening', self.http.onListening)
             self.http.on('request', self.http.handleRequest)
             self.http.on('upgrade', self.http.handleUpgrade)
-            self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined)
+            self.http.listen(self.TRACKERPORT, self.TRACKERHOST)
           }
           self.status = {cpu: stats.cpu, mem: stats.memory, state: 1}
         }
@@ -398,7 +398,7 @@ class Server extends EventEmitter {
       throw new Error('server already listening')
       // return
     } else {
-      this.http.listen(this.TRACKERPORT, this.TRACKERHOST, undefined)
+      this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
     }
   }
 
