@@ -93,17 +93,153 @@ class Server extends EventEmitter {
     // start a websocket tracker (for WebTorrent) unless the user explicitly says no
     const self = this
     this.http = http.createServer()
-    // this.http.onUpgrade = () => {}
-    // this.http.onError = () => {}
+    this.http.onError = (err) => {
+      self.emit('http-error', err)
+    }
     this.http.onListening = () => {
       debug('listening')
-      self.emit('listening')
+      self.emit('http-listening')
     }
-    // this.http.onRequest = () => {}
-    // this.http.onClose = () => {}
-    this.http.on('error', this._onError)
+    this.http.onRequest = (req, res) => {
+      if (res.headersSent) return
+
+      const infoHashes = Object.keys(this.torrents)
+      let activeTorrents = 0
+      const allPeers = {}
+  
+      function countPeers (filterFunction) {
+        let count = 0
+        let key
+  
+        for (key in allPeers) {
+          if (hasOwnProperty.call(allPeers, key) && filterFunction(allPeers[key])) {
+            count++
+          }
+        }
+  
+        return count
+      }
+  
+      function groupByClient () {
+        const clients = {}
+        for (const key in allPeers) {
+          if (hasOwnProperty.call(allPeers, key)) {
+            const peer = allPeers[key]
+  
+            if (!clients[peer.client.client]) {
+              clients[peer.client.client] = {}
+            }
+            const client = clients[peer.client.client]
+            // If the client is not known show 8 chars from peerId as version
+            const version = peer.client.version || Buffer.from(peer.peerId, 'hex').toString().substring(0, 8)
+            if (!client[version]) {
+              client[version] = 0
+            }
+            client[version]++
+          }
+        }
+        return clients
+      }
+  
+      function printClients (clients) {
+        let html = '<ul>\n'
+        for (const name in clients) {
+          if (hasOwnProperty.call(clients, name)) {
+            const client = clients[name]
+            for (const version in client) {
+              if (hasOwnProperty.call(client, version)) {
+                html += `<li><strong>${name}</strong> ${version} : ${client[version]}</li>\n`
+              }
+            }
+          }
+        }
+        html += '</ul>'
+        return html
+      }
+  
+      if (req.method === 'GET' && (req.url === '/stats' || req.url === '/stats.json')) {
+        infoHashes.forEach(infoHash => {
+          const peers = this.torrents[infoHash].peers
+          const keys = peers.keys
+          if (keys.length > 0) activeTorrents++
+  
+          keys.forEach(peerId => {
+            // Don't mark the peer as most recently used for stats
+            const peer = peers.peek(peerId)
+            if (peer == null) return // peers.peek() can evict the peer
+  
+            if (!hasOwnProperty.call(allPeers, peerId)) {
+              allPeers[peerId] = {
+                ipv4: false,
+                ipv6: false,
+                seeder: false,
+                leecher: false
+              }
+            }
+  
+            if (peer.ip.includes(':')) {
+              allPeers[peerId].ipv6 = true
+            } else {
+              allPeers[peerId].ipv4 = true
+            }
+  
+            if (peer.complete) {
+              allPeers[peerId].seeder = true
+            } else {
+              allPeers[peerId].leecher = true
+            }
+  
+            allPeers[peerId].peerId = peer.peerId
+            allPeers[peerId].client = peerid(peer.peerId)
+          })
+        })
+  
+        const isSeederOnly = peer => peer.seeder && peer.leecher === false
+        const isLeecherOnly = peer => peer.leecher && peer.seeder === false
+        const isSeederAndLeecher = peer => peer.seeder && peer.leecher
+        const isIPv4 = peer => peer.ipv4
+        const isIPv6 = peer => peer.ipv6
+  
+        const stats = {
+          torrents: infoHashes.length,
+          activeTorrents,
+          peersAll: Object.keys(allPeers).length,
+          peersSeederOnly: countPeers(isSeederOnly),
+          peersLeecherOnly: countPeers(isLeecherOnly),
+          peersSeederAndLeecher: countPeers(isSeederAndLeecher),
+          peersIPv4: countPeers(isIPv4),
+          peersIPv6: countPeers(isIPv6),
+          clients: groupByClient()
+        }
+  
+        if (req.url === '/stats.json' || req.headers.accept === 'application/json') {
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(stats))
+        } else if (req.url === '/stats') {
+          res.setHeader('Content-Type', 'text/html')
+          res.end(`
+            <h1>${stats.torrents} torrents (${stats.activeTorrents} active)</h1>
+            <h2>Connected Peers: ${stats.peersAll}</h2>
+            <h3>Peers Seeding Only: ${stats.peersSeederOnly}</h3>
+            <h3>Peers Leeching Only: ${stats.peersLeecherOnly}</h3>
+            <h3>Peers Seeding & Leeching: ${stats.peersSeederAndLeecher}</h3>
+            <h3>IPv4 Peers: ${stats.peersIPv4}</h3>
+            <h3>IPv6 Peers: ${stats.peersIPv6}</h3>
+            <h3>Clients:</h3>
+            ${printClients(stats.clients)}
+          `.replace(/^\s+/gm, '')) // trim left
+        }
+      } else {
+        throw new Error(`invalid action in HTTP request: ${req.url}`)
+      }
+    }
+    this.http.onClose = () => {
+      self.emit('http-close')
+    }
+    this.http.on('error', this.http.onError)
     this.http.on('listening', this.http.onListening)
-    this.http.on('request', this.handleRequest)
+    this.http.on('request', this.http.onRequest)
+    this.http.on('close', this.http.onClose)
 
     // Add default http request handler on next tick to give user the chance to add
     // their own handler first. Handle requests untouched by user's handler.
@@ -113,9 +249,28 @@ class Server extends EventEmitter {
       ...(isObject(opts.ws) ? opts.ws : {}),
       noServer: true
     })
+    this.ws.onError = (err) => {
+      self.emit('ws-error', err)
+    }
+    this.ws.onConnection = (socket, req) => {
+      // Note: socket.upgradeReq was removed in ws@3.0.0, so re-add it.
+      // https://github.com/websockets/ws/pull/1099
 
-    this.http.on('upgrade', this.handleUpgrade)
-
+      // if resource usage is high, send only the url of another tracker
+      // else handle websockets as usual
+      socket.upgradeReq = req
+      this.onWebSocketConnection(socket)
+    }
+    this.ws.onClose = () => {
+      self.emit('ws-close')
+    }
+    this.ws.onListening = () => {
+      self.emit('ws-listening')
+    }
+    this.ws.on('listening', this.ws.onListening)
+    this.ws.on('close', this.ws.onClose)
+    this.ws.on('error', this.ws.onError)
+    this.ws.on('connection', this.ws.onConnection)
     this.ws.address = () => {
       if(this.http.listening){
         return this.http.address()
@@ -124,16 +279,11 @@ class Server extends EventEmitter {
       }
     }
 
-    this.ws.on('error', this._onError)
-    this.ws.on('connection', (socket, req) => {
-      // Note: socket.upgradeReq was removed in ws@3.0.0, so re-add it.
-      // https://github.com/websockets/ws/pull/1099
-
-      // if resource usage is high, send only the url of another tracker
-      // else handle websockets as usual
-      socket.upgradeReq = req
-      this.onWebSocketConnection(socket)
-    })
+    this.http.onUpgrade = (request, socket, head) => {
+      // connect if relay tracker
+      // if client then go through resource
+    }
+    this.http.on('upgrade', this.http.onUpgrade)
 
     this.intervalUsage(60000)
 
@@ -171,150 +321,6 @@ class Server extends EventEmitter {
     }
   }
 
-  onListening () {
-    debug('listening')
-    console.log('listening')
-  }
-
-  handleRequest(req, res){
-    if (res.headersSent) return
-
-    const infoHashes = Object.keys(this.torrents)
-    let activeTorrents = 0
-    const allPeers = {}
-
-    function countPeers (filterFunction) {
-      let count = 0
-      let key
-
-      for (key in allPeers) {
-        if (hasOwnProperty.call(allPeers, key) && filterFunction(allPeers[key])) {
-          count++
-        }
-      }
-
-      return count
-    }
-
-    function groupByClient () {
-      const clients = {}
-      for (const key in allPeers) {
-        if (hasOwnProperty.call(allPeers, key)) {
-          const peer = allPeers[key]
-
-          if (!clients[peer.client.client]) {
-            clients[peer.client.client] = {}
-          }
-          const client = clients[peer.client.client]
-          // If the client is not known show 8 chars from peerId as version
-          const version = peer.client.version || Buffer.from(peer.peerId, 'hex').toString().substring(0, 8)
-          if (!client[version]) {
-            client[version] = 0
-          }
-          client[version]++
-        }
-      }
-      return clients
-    }
-
-    function printClients (clients) {
-      let html = '<ul>\n'
-      for (const name in clients) {
-        if (hasOwnProperty.call(clients, name)) {
-          const client = clients[name]
-          for (const version in client) {
-            if (hasOwnProperty.call(client, version)) {
-              html += `<li><strong>${name}</strong> ${version} : ${client[version]}</li>\n`
-            }
-          }
-        }
-      }
-      html += '</ul>'
-      return html
-    }
-
-    if (req.method === 'GET' && (req.url === '/stats' || req.url === '/stats.json')) {
-      infoHashes.forEach(infoHash => {
-        const peers = this.torrents[infoHash].peers
-        const keys = peers.keys
-        if (keys.length > 0) activeTorrents++
-
-        keys.forEach(peerId => {
-          // Don't mark the peer as most recently used for stats
-          const peer = peers.peek(peerId)
-          if (peer == null) return // peers.peek() can evict the peer
-
-          if (!hasOwnProperty.call(allPeers, peerId)) {
-            allPeers[peerId] = {
-              ipv4: false,
-              ipv6: false,
-              seeder: false,
-              leecher: false
-            }
-          }
-
-          if (peer.ip.includes(':')) {
-            allPeers[peerId].ipv6 = true
-          } else {
-            allPeers[peerId].ipv4 = true
-          }
-
-          if (peer.complete) {
-            allPeers[peerId].seeder = true
-          } else {
-            allPeers[peerId].leecher = true
-          }
-
-          allPeers[peerId].peerId = peer.peerId
-          allPeers[peerId].client = peerid(peer.peerId)
-        })
-      })
-
-      const isSeederOnly = peer => peer.seeder && peer.leecher === false
-      const isLeecherOnly = peer => peer.leecher && peer.seeder === false
-      const isSeederAndLeecher = peer => peer.seeder && peer.leecher
-      const isIPv4 = peer => peer.ipv4
-      const isIPv6 = peer => peer.ipv6
-
-      const stats = {
-        torrents: infoHashes.length,
-        activeTorrents,
-        peersAll: Object.keys(allPeers).length,
-        peersSeederOnly: countPeers(isSeederOnly),
-        peersLeecherOnly: countPeers(isLeecherOnly),
-        peersSeederAndLeecher: countPeers(isSeederAndLeecher),
-        peersIPv4: countPeers(isIPv4),
-        peersIPv6: countPeers(isIPv6),
-        clients: groupByClient()
-      }
-
-      if (req.url === '/stats.json' || req.headers.accept === 'application/json') {
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(stats))
-      } else if (req.url === '/stats') {
-        res.setHeader('Content-Type', 'text/html')
-        res.end(`
-          <h1>${stats.torrents} torrents (${stats.activeTorrents} active)</h1>
-          <h2>Connected Peers: ${stats.peersAll}</h2>
-          <h3>Peers Seeding Only: ${stats.peersSeederOnly}</h3>
-          <h3>Peers Leeching Only: ${stats.peersLeecherOnly}</h3>
-          <h3>Peers Seeding & Leeching: ${stats.peersSeederAndLeecher}</h3>
-          <h3>IPv4 Peers: ${stats.peersIPv4}</h3>
-          <h3>IPv6 Peers: ${stats.peersIPv6}</h3>
-          <h3>Clients:</h3>
-          ${printClients(stats.clients)}
-        `.replace(/^\s+/gm, '')) // trim left
-      }
-    } else {
-      throw new Error(`invalid action in HTTP request: ${req.url}`)
-    }
-  }
-
-  handleUpgrade(request, socket, head){
-    // connect if relay tracker
-    // if client then go through resource
-  }
-
   compute(cb) {
     const self = this
     pidusage(process.pid, function (err, stats) {
@@ -323,10 +329,10 @@ class Server extends EventEmitter {
       } else if(stats){
         if(stats.cpu > 95 || stats.mem > 1615000000){
           if(self.status.cpu < stats.cpu || self.status.mem < stats.memory){
-            self.http.off('error', self._onError)
-            self.http.off('listening', self.onListening)
-            self.http.off('request', self.handleRequest)
-            self.http.off('upgrade', self.handleUpgrade)
+            self.http.off('error', self.http.onError)
+            self.http.off('listening', self.http.onListening)
+            self.http.off('request', self.http.handleRequest)
+            self.http.off('upgrade', self.http.handleUpgrade)
             self.http.close((err) => {
               console.error(err)
             })
@@ -335,10 +341,10 @@ class Server extends EventEmitter {
         } // send url of another tracker before closing server, if no tracker is available then close server
         else if((stats.cpu > 75 && stats.cpu < 95) || (stats.mem > 1275000000 && stats.mem < 1615000000)){
           if(self.status.cpu > 95 || self.status.mem > 1615000000){
-            self.http.on('error', self._onError)
-            self.http.on('listening', self.onListening)
-            self.http.on('request', self.handleRequest)
-            self.http.on('upgrade', self.handleUpgrade)
+            self.http.on('error', self.http.onError)
+            self.http.on('listening', self.http.onListening)
+            self.http.on('request', self.http.handleRequest)
+            self.http.on('upgrade', self.http.handleUpgrade)
             self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined, () => {
               console.log('listening')
             })
@@ -346,10 +352,10 @@ class Server extends EventEmitter {
           self.status = {cpu: stats.cpu, mem: stats.memory, state: 2}
         } else {
           if(self.status.cpu > 95 || self.status.mem > 1615000000){
-            self.http.on('error', self._onError)
-            self.http.on('listening', self.onListening)
-            self.http.on('request', self.handleRequest)
-            self.http.on('upgrade', self.handleUpgrade)
+            self.http.on('error', self.http.onError)
+            self.http.on('listening', self.http.onListening)
+            self.http.on('request', self.http.handleRequest)
+            self.http.on('upgrade', self.http.handleUpgrade)
             self.http.listen(self.TRACKERPORT, self.TRACKERHOST, undefined, () => {
               console.log('listening')
             })
@@ -381,10 +387,6 @@ class Server extends EventEmitter {
     }, time)
   }
 
-  _onError (err) {
-    this.emit('error', err)
-  }
-
   listen (){
     if(this.http.listening){
       throw new Error('server already listening')
@@ -399,22 +401,26 @@ class Server extends EventEmitter {
   close () {
     debug('close')
 
-    this.destroyed = true
-
-    try {
-      this.ws.close((err) => {
-        console.error(err)
-      })
-    } catch (err) {
-      console.error(err)
+    // try {
+    //   this.ws.close((err) => {
+    //     console.error(err)
+    //   })
+    // } catch (err) {
+    //   console.error(err)
+    // }
+    if(!this.http.listening){
+      throw new Error('server is not listening')
     }
+    const self = this
     try {
       this.http.close((err) => {
-        console.error(err)
+        self.emit('error', err)
       })
     } catch (error) {
-      console.error(error)
+      this.emit('error', error)
     }
+
+    // this.destroyed = true
   }
 
   createSwarm (infoHash, cb) {
