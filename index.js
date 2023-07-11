@@ -94,11 +94,11 @@ class Server extends EventEmitter {
     const self = this
     this.http = http.createServer()
     this.http.onError = (err) => {
-      self.emit('http-error', err)
+      self.emit('error', 'http', err)
     }
     this.http.onListening = () => {
       debug('listening')
-      self.emit('http-listening')
+      self.emit('listening', 'http')
     }
     this.http.onRequest = (req, res) => {
       if (res.headersSent) return
@@ -234,7 +234,7 @@ class Server extends EventEmitter {
       }
     }
     this.http.onClose = () => {
-      self.emit('http-close')
+      self.emit('close', 'http')
     }
     this.http.on('error', this.http.onError)
     this.http.on('listening', this.http.onListening)
@@ -250,7 +250,7 @@ class Server extends EventEmitter {
       noServer: true
     })
     this.ws.onError = (err) => {
-      self.emit('ws-error', err)
+      self.emit('error', 'ws', err)
     }
     this.ws.onConnection = (socket, req) => {
       // Note: socket.upgradeReq was removed in ws@3.0.0, so re-add it.
@@ -262,10 +262,10 @@ class Server extends EventEmitter {
       this.onWebSocketConnection(socket)
     }
     this.ws.onClose = () => {
-      self.emit('ws-close')
+      self.emit('close', 'ws')
     }
     this.ws.onListening = () => {
-      self.emit('ws-listening')
+      self.emit('listening', 'ws')
     }
     this.ws.on('listening', this.ws.onListening)
     this.ws.on('close', this.ws.onClose)
@@ -289,13 +289,13 @@ class Server extends EventEmitter {
 
     this.dht = new DHT()
     this.dht.onListening = () => {
-      self.emit('relay-listening')
+      self.emit('listening', 'relay')
     }
     this.dht.onReady = () => {
-      self.emit('relay-ready')
+      self.emit('ready', 'relay')
     }
     this.dht.onError = (err) => {
-      self.emit('relay-error', err)
+      self.emit('error', 'relay', err)
     }
     this.dht.on('ready', this.dht.onReady)
     this.dht.on('listening', this.dht.onListening)
@@ -344,7 +344,9 @@ class Server extends EventEmitter {
             self.http.off('request', self.http.handleRequest)
             self.http.off('upgrade', self.http.handleUpgrade)
             self.http.close((err) => {
-              console.error(err)
+              if(err){
+                self.emit('error', 'http', err)
+              }
             })
           }
           self.status = {cpu: stats.cpu, mem: stats.memory, state: 3}
@@ -419,7 +421,7 @@ class Server extends EventEmitter {
     try {
       this.http.close((err) => {
         if(err){
-          self.emit('error', err)
+          self.emit('error', 'http', err)
         }
       })
     } catch (error) {
