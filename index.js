@@ -6,15 +6,13 @@ import series from 'run-series'
 import string2compact from 'string2compact'
 import { WebSocketServer, WebSocket } from 'ws'
 import DHT from 'bittorrent-dht'
-import {createProxyMiddleware} from 'http-proxy-middleware'
+// import {createProxyMiddleware} from 'http-proxy-middleware'
 import { hex2bin } from 'uint8-util'
 import pidusage from 'pidusage'
 import common from './lib/common.js'
 import Swarm from './lib/swarm.js'
 import parseWebSocketRequest from './lib/parse-websocket.js'
-import fs from 'fs'
-import path from 'path'
-import {nanoid} from 'nanoid'
+import crypto from 'crypto'
 
 const debug = Debug('bittorrent-tracker:server')
 const hasOwnProperty = Object.prototype.hasOwnProperty
