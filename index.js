@@ -27,6 +27,7 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Object}  opts                options object
  * @param {Number}  opts.announceTimer       tell clients to announce on this interval (ms)
  * @param {Number}  opts.relayTimer       interval to find and connect to other trackers (ms)
+ * @param {Number}  opts.timer       interval for general things like checking for active and inactive connections (ms)
  * @param {Number}  opts.dhtPort      port used for the dht
  * @param {Number}  opts.trackerPort     port used for the tracker
  * @param {String}  opts.dhtHost     host used for the dht
@@ -54,7 +55,8 @@ class Server extends EventEmitter {
 
     // this.cpuLimit = 100
     // this.memLimit = 1700000000
-    this.timer = opts.relayTimer ? opts.relayTimer : 15 * 60 * 1000
+    this.timer = opts.timer || 1 * 60 * 1000
+    this.relayTimer = opts.relayTimer ? opts.relayTimer : 15 * 60 * 1000
     this.DHTPORT = opts.dhtPort || 16881
     this.TRACKERPORT = opts.trackerPort || 16969
     this.DHTHOST = opts.dhtHost || '0.0.0.0'
@@ -375,6 +377,11 @@ class Server extends EventEmitter {
     // this.talkToRelay()
 
     this.intervalRelay = setInterval(() => {
+      if(this.http.listening){
+        this.talkToRelay()
+      }
+    }, this.relayTimer)
+    this.intervalActive = setInterval(() => {
       for(const test in self.trackers){
         if(!self.trackers[test].active){
           self.trackers[test].terminate()
@@ -383,11 +390,8 @@ class Server extends EventEmitter {
         self.trackers[test].active = false
         self.trackers[test].send(JSON.stringify({action: 'ping'}))
       }
-      if(this.http.listening){
-        this.talkToRelay()
-      }
-  }, this.relayTimer)
-  this.intervalUsage(60000)
+    }, this.timer)
+    this.intervalUsage(60000)
   }
 
   talkToRelay(){
