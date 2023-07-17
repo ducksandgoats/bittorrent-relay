@@ -249,12 +249,14 @@ class Server extends EventEmitter {
           res.end(JSON.stringify(this.sendTo))
         } else if(test.length === 2){
           res.setHeader('Content-Type', 'application/json')
-          res.end(this.sendTo[test[1]] ? JSON.stringify(this.sendTo[test[1]]) : [])
+          res.end(this.sendTo[test[1]] ? JSON.stringify(this.sendTo[test[1]]) : JSON.stringify([]))
         } else {
-          throw new Error(`invalid action in HTTP request: ${req.url}`)
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify('not found'))
         }
       } else {
-        throw new Error(`invalid action in HTTP request: ${req.url}`)
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify('not found'))
       }
     }
     this.http.onClose = () => {
@@ -424,9 +426,9 @@ class Server extends EventEmitter {
           self.listen()
           self.status = {...stats, state: 1}
         }
-        self.trackers.forEach((data) => {
-          data.send(JSON.stringify(self.status))
-        })
+        for(const track in self.trackers){
+          self.trackers[track].send(JSON.stringify({action: 'status', ...self.status}))
+        }
         // send url of another tracker before closing server, if no tracker is available then close server
       } else {
         self.emit('error', 'relay', new Error('no error, no stats'))
