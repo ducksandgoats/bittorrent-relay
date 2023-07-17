@@ -61,22 +61,13 @@ class Server extends EventEmitter {
     this.TRACKERPORT = opts.trackerPort || 16969
     this.DHTHOST = opts.dhtHost || '0.0.0.0'
     this.TRACKERHOST = opts.trackerHost || '0.0.0.0'
-    this.hashes = (() => {if(!opts.hashes){return [];}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',');})()
-    if(!this.hashes.length){
-      throw new Error('hashes can not be empty')
-    }
-    this.relays = this.hashes.map((data) => {return crypto.createHash('sha1').update(data + "'s").digest('hex')})
+    this.hash = crypto.createHash('sha1').update('').digest('hex')
+    this.relay = crypto.createHash('sha1').update(this.hash + "'s").digest('hex')
+    this.userHashes = this.hashes.length ? true : false
     // this._trustProxy = !!opts.trustProxy
     this._trustProxy = opts.trustProxy === false ? opts.trustProxy : true
     // if (typeof opts.filter === 'function') this._filter = opts.filter
-    this._filter = function (infoHash, params, cb) {
-      // const hashes = (() => {if(!opts.hashes){throw new Error('must have hashes')}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',')})()
-      if(this.hashes.includes(infoHash)){
-        cb(null)
-      } else {
-        cb(new Error('disallowed torrent'))
-      }
-    }
+    this._filter = null
 
     this.domain = opts.domain || null
     this.host = null
@@ -90,8 +81,7 @@ class Server extends EventEmitter {
     // this.infohashRefs = {}
     // this.trackerRefs = {}
     this.sendTo = {}
-
-    this.hashes.forEach((data) => {this.sendTo[data] = []})
+    // this.sendTo = ''
 
     // start a websocket tracker (for WebTorrent) unless the user explicitly says no
     const self = this
@@ -242,17 +232,10 @@ class Server extends EventEmitter {
             ${printClients(stats.clients)}
           `.replace(/^\s+/gm, '')) // trim left
         }
-      } else if(req.method === 'GET' && req.url.startsWith('/i')){
-        const test = req.url.split('/').filter(Boolean)
-        if(test.length === 1){
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(this.sendTo))
-        } else if(test.length === 2){
-          res.setHeader('Content-Type', 'application/json')
-          res.end(this.sendTo[test[1]] ? JSON.stringify(this.sendTo[test[1]]) : [])
-        } else {
-          throw new Error(`invalid action in HTTP request: ${req.url}`)
-        }
+      } else if(req.method === 'GET' && req.url === '/i'){
+        const test = Object.keys(this.trackers).length
+        res.setHeader('Content-Type', 'application/json')
+        res.end({action: 'relay', trackers: JSON.stringify(test)})
       } else {
         throw new Error(`invalid action in HTTP request: ${req.url}`)
       }
@@ -278,34 +261,16 @@ class Server extends EventEmitter {
 
       // if resource usage is high, send only the url of another tracker
       // else handle websockets as usual
-      let action = req.url.slice(0, req.url.lastIndexOf('/')).slice(1)
-      let hash = req.url.slice(req.url.lastIndexOf('/')).slice(1)
-      if(!action || !hash || action === hash || action === '/' || hash === '/'){
-        socket.terminate()
+      if(req.url === '/relay'){
+        socket.active = true
+        socket.relays = []
+        socket.hashes = []
+        this.onRelaySocketConnection(socket)
+      } else if(req.url === '/announce'){
+        socket.upgradeReq = req
+        this.onWebSocketConnection(socket)
       } else {
-        if(action === '/relay'){
-          if(this.trackers[hash]){
-            socket.terminate()
-          } else {
-            socket.id = hash
-            socket.active = true
-            socket.relays = []
-            socket.hashes = []
-            this.onRelaySocketConnection(socket)
-          }
-        } else if(action === '/announce'){
-          if(this.status.state !== 1 && this.sendTo[hash] && this.sendTo[hash].length){
-            // send them tracker url that is usable then close the socket
-            socket.send(JSON.stringify({action: 'relay', tracker: this.sendTo[hash][Math.floor(Math.random() * this.sendTo[hash].length)]}))
-            socket.terminate()
-          } else {
-            // use regular socket function from bittorrent-tracker
-            socket.upgradeReq = req
-            this.onWebSocketConnection(socket)
-          }
-        } else {
-          socket.terminate()
-        }
+        socket.terminate()
       }
     }
     this.ws.onClose = () => {
@@ -354,9 +319,9 @@ class Server extends EventEmitter {
           this.trackers[id].relays.push(infoHash)
         }
       } else {
-        const relay = `ws://${link}/relay/`
+        const relay = `ws://${link}/relay`
         // const announce = `ws://${link}/announce/`
-        const con = new WebSocket(relay + this.id)
+        const con = new WebSocket(relay)
         // con.relay = relay
         // con.announce = announce
         con.id = id
@@ -393,14 +358,12 @@ class Server extends EventEmitter {
   }
 
   talkToRelay(){
-    for(const test of this.relays){
-      this.dht.lookup(test, (err, num) => {
-          console.log(err, num)
-      })
-      this.dht.announce(test, this.TRACKERPORT, (err) => {
-          console.log(err)
-      })
-    }
+    this.dht.lookup(this.relay, (err, num) => {
+      console.log(err, num)
+    })
+    this.dht.announce(this.relay, this.TRACKERPORT, (err) => {
+      console.log(err)
+    })
   }
 
   compute(cb) {
@@ -501,7 +464,7 @@ class Server extends EventEmitter {
       socket.off('close', socket.onClose)
     }
     socket.onOpen = function(){
-      self.trackers[socket.id] = socket
+      // self.trackers[socket.id] = socket
       socket.send(JSON.stringify({id: self.id, address: self.address, host: self.host, port: self.port, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
@@ -511,8 +474,11 @@ class Server extends EventEmitter {
     socket.onData = function(data, buffer){
       const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
       if(message.action === 'session'){
-        if(socket.id !== message.id){
+        if(self.trackers[message.id]){
           socket.terminate()
+        } else {
+          socket.id = message.id
+          self.trackers[socket.id] = socket
         }
         socket.address = message.address
         socket.relay = message.address + '/relay'
@@ -520,14 +486,32 @@ class Server extends EventEmitter {
         socket.host = message.host
         socket.port = message.port
         for(const messageRelay of message.relays){
-          if(self.relays.includes(messageRelay)){
+          if(self.userHashes){
+            if(self.relays.includes(messageRelay)){
+              if(!socket.relays.includes(messageRelay)){
+                socket.relays.push(messageRelay)
+              }
+            }
+          } else {
             if(!socket.relays.includes(messageRelay)){
               socket.relays.push(messageRelay)
             }
           }
         }
         for(const messageHash of message.hashes){
-          if(self.hashes.includes(messageHash)){
+          if(self.userHashes){
+            if(self.hashes.includes(messageHash)){
+              if(!self.sendTo[messageHash]){
+                self.sendTo[messageHash] = []
+              }
+              if(!socket.hashes.includes(messageHash)){
+                socket.hashes.push(messageHash)
+              }
+            }
+          } else {
+            if(!self.sendTo[messageHash]){
+              self.sendTo[messageHash] = []
+            }
             if(!socket.hashes.includes(messageHash)){
               socket.hashes.push(messageHash)
             }
