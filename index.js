@@ -242,7 +242,9 @@ class Server extends EventEmitter {
             ${printClients(stats.clients)}
           `.replace(/^\s+/gm, '')) // trim left
         }
-      } else if(req.method === 'GET' && req.url.startsWith('/i')){
+      } else if(req.method === 'GET' && req.url === '/i'){
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify(this.sendTo))
         const test = req.url.split('/').filter(Boolean)
         if(test.length === 1){
           res.setHeader('Content-Type', 'application/json')
@@ -252,8 +254,12 @@ class Server extends EventEmitter {
           res.end(this.sendTo[test[1]] ? JSON.stringify(this.sendTo[test[1]]) : JSON.stringify([]))
         } else {
           res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify('not found'))
+          res.end(JSON.stringify('invalid url'))
         }
+      } else if(req.method === 'GET' && req.url.startsWith('/i/')){
+        const test = req.url.replace('/i/', '')
+        res.setHeader('Content-Type', 'application/json')
+        res.end(this.sendTo[test] ? JSON.stringify(this.sendTo[test]) : JSON.stringify([]))
       } else {
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify('not found'))
