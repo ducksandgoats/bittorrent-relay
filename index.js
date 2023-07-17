@@ -33,8 +33,8 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Number}  opts.trackerPort     port used for the tracker
  * @param {String}  opts.dhtHost     host used for the dht
  * @param {String}  opts.trackerHost     host used for the tracker
+ * @param {String}  opts.domain     domain name that will be used
  * @param {Boolean}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
- * @param {Boolean}  opts.dir     path to directory which will hold any needed data
  */
 
 class Server extends EventEmitter {
