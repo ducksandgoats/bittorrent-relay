@@ -6,7 +6,6 @@ import series from 'run-series'
 import string2compact from 'string2compact'
 import { WebSocketServer, WebSocket } from 'ws'
 import DHT from 'bittorrent-dht'
-// import {createProxyMiddleware} from 'http-proxy-middleware'
 import { hex2bin } from 'uint8-util'
 import pidusage from 'pidusage'
 import common from './lib/common.js'
@@ -104,7 +103,7 @@ class Server extends EventEmitter {
       self.address = `ws://${self.domain || test.address}:${test.port}`
       for(const socket in this.trackers){
         if(this.trackers[socket].readyState === 1){
-          this.trackers[socket].send(JSON.stringify({action: 'address', host: self.domain || test.address, port: test.port, address: self.address}))
+          this.trackers[socket].send(JSON.stringify({action: 'address', domain: self.domain, host: test.address, port: test.port, address: self.address}))
         }
       }
       self.talkToRelay()
@@ -492,7 +491,7 @@ class Server extends EventEmitter {
     }
     socket.onOpen = function(){
       self.trackers[socket.id] = socket
-      socket.send(JSON.stringify({id: self.id, address: self.address, host: self.DHTHOST, port: self.DHTPORT, relays: self.relays, hashes: self.hashes, action: 'session'}))
+      socket.send(JSON.stringify({id: self.id, address: self.address, domain: self.domain, host: self.DHTHOST, port: self.DHTPORT, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
       self.emit('error', 'ws', err)
@@ -504,6 +503,7 @@ class Server extends EventEmitter {
         if(socket.id !== message.id || socket.id !== crypto.createHash('sha1').update(`${message.host}:${message.port}`).digest('hex')){
           socket.terminate()
         }
+        socket.domain = message.domain
         socket.address = message.address
         socket.relay = message.address + '/relay'
         socket.announce = message.address + '/announce'
@@ -525,6 +525,9 @@ class Server extends EventEmitter {
         }
       }
       if(message.action === 'address'){
+        if(socket.domain !== message.domain){
+          socket.domain = message.domain
+        }
         if(socket.address !== message.address){
           socket.address = message.address
           socket.relay = message.address + '/relay'
