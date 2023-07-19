@@ -449,7 +449,7 @@ class Server extends EventEmitter {
     }, time)
   }
 
-  tunrOn(cb){
+  turnOn(cb){
     if(!this.relay.listening){
       this.relay.listen(this.DHTPORT, this.DHTHOST)
     }
