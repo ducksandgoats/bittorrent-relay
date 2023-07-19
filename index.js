@@ -55,7 +55,7 @@ class Server extends EventEmitter {
     // this.cpuLimit = 100
     // this.memLimit = 1700000000
     this.timer = opts.timer || 1 * 60 * 1000
-    this.relayTimer = opts.relayTimer ? opts.relayTimer : 15 * 60 * 1000
+    this.relayTimer = opts.relayTimer ? opts.relayTimer : 5 * 60 * 1000
     this.DHTPORT = opts.dhtPort || 16881
     this.TRACKERPORT = opts.trackerPort || 16969
     this.DHTHOST = opts.dhtHost || '0.0.0.0'
@@ -66,7 +66,7 @@ class Server extends EventEmitter {
     }
     this.relays = this.hashes.map((data) => {return crypto.createHash('sha1').update(data + "'s").digest('hex')})
     // this._trustProxy = !!opts.trustProxy
-    this._trustProxy = opts.trustProxy === false ? opts.trustProxy : true
+    this._trustProxy = opts.trustProxy || null
     // if (typeof opts.filter === 'function') this._filter = opts.filter
     this._filter = function (infoHash, params, cb) {
       // const hashes = (() => {if(!opts.hashes){throw new Error('must have hashes')}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',')})()
@@ -254,6 +254,11 @@ class Server extends EventEmitter {
       self.emit('close', 'http')
     }
 
+    this.http.on('error', this.http.onError)
+    this.http.on('listening', this.http.onListening)
+    this.http.on('request', this.http.onRequest)
+    this.http.on('close', this.http.onClose)
+
     // Add default http request handler on next tick to give user the chance to add
     // their own handler first. Handle requests untouched by user's handler.
     this.ws = new WebSocketServer({
@@ -306,6 +311,7 @@ class Server extends EventEmitter {
       self.emit('close', 'ws')
     }
     this.ws.onListening = () => {
+      this.ws.listening = true
       self.emit('listening', 'ws')
     }
     this.ws.on('listening', this.ws.onListening)
@@ -315,22 +321,25 @@ class Server extends EventEmitter {
 
     // this.intervalUsage(60000)
 
-    this.dht = new DHT()
-    this.dht.onListening = () => {
+    this.relay = new DHT()
+    this.relay.onListening = () => {
       self.emit('listening', 'relay')
     }
-    this.dht.onReady = () => {
+    this.relay.onReady = () => {
       self.emit('ready', 'relay')
     }
-    this.dht.onError = (err) => {
+    this.relay.onError = (err) => {
       self.emit('error', 'relay', err)
     }
-    this.dht.on('ready', this.dht.onReady)
-    this.dht.on('listening', this.dht.onListening)
-    this.dht.on('error', this.dht.onError)
-    this.dht.listen(this.DHTPORT, this.DHTHOST)
+    this.relay.onClose = () => {
+      self.emit('close', 'relay')
+    }
+    this.relay.on('ready', this.relay.onReady)
+    this.relay.on('listening', this.relay.onListening)
+    this.relay.on('error', this.relay.onError)
+    this.relay.on('close', this.relay.onClose)
     
-    this.dht.on('peer', (peer, infoHash, from) => {
+    this.relay.on('peer', (peer, infoHash, from) => {
       // if not connected, then connect socket
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
@@ -356,7 +365,7 @@ class Server extends EventEmitter {
       }
       // finish the rest
     })
-    // this.dht.on('announce', (peer, infoHash) => {
+    // this.relay.on('announce', (peer, infoHash) => {
     // // if not connected, then connect socket
     // // share resource details on websocket
     // })
@@ -383,10 +392,10 @@ class Server extends EventEmitter {
 
   talkToRelay(){
     for(const test of this.relays){
-      this.dht.lookup(test, (err, num) => {
+      this.relay.lookup(test, (err, num) => {
           console.log(err, num)
       })
-      this.dht.announce(test, this.TRACKERPORT, (err) => {
+      this.relay.announce(test, this.TRACKERPORT, (err) => {
           console.log(err)
       })
     }
@@ -440,12 +449,24 @@ class Server extends EventEmitter {
     }, time)
   }
 
+  tunrOn(cb){
+    if(!this.relay.listening){
+      this.relay.listen(this.DHTPORT, this.DHTHOST)
+    }
+    if(!this.http.listening){
+      this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+    }
+    if(cb){
+      cb()
+    }
+  }
+
   listen (){
     if(!this.http.listening){
-      this.http.on('error', this.http.onError)
-      this.http.on('listening', this.http.onListening)
-      this.http.on('request', this.http.onRequest)
-      this.http.on('close', this.http.onClose)
+      // this.http.on('error', this.http.onError)
+      // this.http.on('listening', this.http.onListening)
+      // this.http.on('request', this.http.onRequest)
+      // this.http.on('close', this.http.onClose)
       this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
     }
   }
@@ -454,13 +475,28 @@ class Server extends EventEmitter {
     debug('close')
     // const self = this
     if(this.http.listening){
-      this.http.off('error', this.http.onError)
-      this.http.off('listening', this.http.onListening)
-      this.http.off('request', this.http.onRequest)
-      this.http.off('close', this.http.onClose)
+      // this.http.off('error', this.http.onError)
+      // this.http.off('listening', this.http.onListening)
+      // this.http.off('request', this.http.onRequest)
+      // this.http.off('close', this.http.onClose)
       this.http.close()
     }
     // this.destroyed = true
+  }
+
+  turnOff(cb){
+    if(this.ws.listening){
+      this.ws.close()
+    }
+    if(this.http.listening){
+      this.http.close()
+    }
+    if(this.relay.listening){
+      this.relay.destroy()
+    }
+    if(cb){
+      cb()
+    }
   }
 
   createSwarm (infoHash, cb) {
