@@ -92,6 +92,6 @@ relay.on('close', (which) => {
   console.log('close', which)
 })
 
-relay.tunrOn(() => {
+relay.turnOn(() => {
   console.log('turned on')
 })
