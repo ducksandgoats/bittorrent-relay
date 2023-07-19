@@ -66,7 +66,7 @@ class Server extends EventEmitter {
     }
     this.relays = this.hashes.map((data) => {return crypto.createHash('sha1').update(data + "'s").digest('hex')})
     // this._trustProxy = !!opts.trustProxy
-    this._trustProxy = opts.trustProxy || null
+    this._trustProxy = Boolean(opts.trustProxy)
     // if (typeof opts.filter === 'function') this._filter = opts.filter
     this._filter = function (infoHash, params, cb) {
       // const hashes = (() => {if(!opts.hashes){throw new Error('must have hashes')}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',')})()
