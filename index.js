@@ -78,7 +78,7 @@ class Server extends EventEmitter {
     }
 
     this.domain = opts.domain || null
-    this.id = crypto.createHash('sha1').update(`${this.DHTHOST}:${this.DHTPORT}`).digest('hex')
+    this.id = crypto.createHash('sha1').update(`${this.domain || this.TRACKERHOST}:${this.TRACKERPORT}`).digest('hex')
     this.dht = {host: this.DHTHOST, port: this.DHTPORT}
     this.tracker = {host: this.TRACKERHOST, port: this.TRACKERPORT}
     this.web = `ws://${this.domain || this.TRACKERHOST}:${this.TRACKERPORT}`
@@ -96,6 +96,7 @@ class Server extends EventEmitter {
     this.http.onListening = () => {
       debug('listening')
       self.tracker = self.http.address()
+      self.id = crypto.createHash('sha1').update(`${self.domain || self.tracker.address}:${self.tracker.port}`).digest('hex')
       self.web = `ws://${self.domain || self.tracker.address}:${self.tracker.port}`
       for(const socket in self.trackers){
         if(self.trackers[socket].readyState === 1){
@@ -320,7 +321,6 @@ class Server extends EventEmitter {
     this.relay = new DHT()
     this.relay.onListening = () => {
       self.dht = self.relay.address()
-      self.id = crypto.createHash('sha1').update(`${self.dht.address}:${self.dht.port}`).digest('hex')
       self.emit('listening', 'relay')
     }
     this.relay.onReady = () => {
