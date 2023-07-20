@@ -97,9 +97,9 @@ class Server extends EventEmitter {
       debug('listening')
       self.tracker = self.http.address()
       self.web = `ws://${self.domain || self.tracker.address}:${self.tracker.port}`
-      for(const socket in this.trackers){
-        if(this.trackers[socket].readyState === 1){
-          this.trackers[socket].send(JSON.stringify({action: 'web', tracker: self.tracker, dht: self.dht, domain: self.domain, web: self.web, trackerHost: self.TRACKERHOST, trackerPort: self.TRACKERPORT, dhtHost: self.DHTHOST, dhtPort: self.DHTPORT}))
+      for(const socket in self.trackers){
+        if(self.trackers[socket].readyState === 1){
+          self.trackers[socket].send(JSON.stringify({action: 'web', tracker: self.tracker, dht: self.dht, domain: self.domain, web: self.web, trackerHost: self.TRACKERHOST, trackerPort: self.TRACKERPORT, dhtHost: self.DHTHOST, dhtPort: self.DHTPORT}))
         }
       }
       self.talkToRelay()
@@ -108,7 +108,7 @@ class Server extends EventEmitter {
     this.http.onRequest = (req, res) => {
       if (res.headersSent) return
 
-      const infoHashes = Object.keys(this.torrents)
+      const infoHashes = Object.keys(self.torrents)
       let activeTorrents = 0
       const allPeers = {}
   
@@ -164,7 +164,7 @@ class Server extends EventEmitter {
   
       if (req.method === 'GET' && (req.url === '/stats' || req.url === '/stats.json')) {
         infoHashes.forEach(infoHash => {
-          const peers = this.torrents[infoHash].peers
+          const peers = self.torrents[infoHash].peers
           const keys = peers.keys
           if (keys.length > 0) activeTorrents++
   
@@ -236,11 +236,11 @@ class Server extends EventEmitter {
         }
       } else if(req.method === 'GET' && req.url === '/i'){
         res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(this.sendTo))
+        res.end(JSON.stringify(self.sendTo))
       } else if(req.method === 'GET' && req.url.startsWith('/i/')){
         const test = req.url.replace('/i/', '')
         res.setHeader('Content-Type', 'application/json')
-        res.end(this.sendTo[test] ? JSON.stringify(this.sendTo[test]) : JSON.stringify([]))
+        res.end(self.sendTo[test] ? JSON.stringify(self.sendTo[test]) : JSON.stringify([]))
       } else {
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify('error'))
@@ -276,24 +276,24 @@ class Server extends EventEmitter {
         const action = req.url.slice(0, req.url.lastIndexOf('/')).slice(1)
         const hash = req.url.slice(req.url.lastIndexOf('/')).slice(1)
         if(action === 'announce'){
-          if(this.status.state !== 1 && this.sendTo[hash] && this.sendTo[hash].length){
+          if(self.status.state !== 1 && self.sendTo[hash] && self.sendTo[hash].length){
             // send them tracker url that is usable then close the socket
-            socket.send(JSON.stringify({action: 'relay', tracker: this.sendTo[hash][Math.floor(Math.random() * this.sendTo[hash].length)]}))
+            socket.send(JSON.stringify({action: 'relay', tracker: self.sendTo[hash][Math.floor(Math.random() * self.sendTo[hash].length)]}))
             socket.terminate()
           } else {
             // use regular socket function from bittorrent-tracker
             socket.upgradeReq = req
-            this.onWebSocketConnection(socket)
+            self.onWebSocketConnection(socket)
           }
         } else if(action === 'relay'){
-          if(this.trackers[hash]){
+          if(self.trackers[hash]){
             socket.terminate()
           } else {
             socket.id = hash
             socket.active = true
             socket.relays = []
             socket.hashes = []
-            this.onRelaySocketConnection(socket)
+            self.onRelaySocketConnection(socket)
           }
         } else {
           throw new Error('invalid path')
@@ -307,7 +307,7 @@ class Server extends EventEmitter {
       self.emit('close', 'ws')
     }
     this.ws.onListening = () => {
-      this.ws.listening = true
+      self.ws.listening = true
       self.emit('listening', 'ws')
     }
     this.ws.on('listening', this.ws.onListening)
@@ -342,9 +342,9 @@ class Server extends EventEmitter {
       // this.tracker[infoHash][ws-link]
       const link = `${peer.host}:${peer.port}`
       const id = crypto.createHash('sha1').update(link).digest('hex')
-      if(this.trackers[id]){
-        if(!this.trackers[id].relays.includes(infoHash)){
-          this.trackers[id].relays.push(infoHash)
+      if(self.trackers[id]){
+        if(!self.trackers[id].relays.includes(infoHash)){
+          self.trackers[id].relays.push(infoHash)
         }
       } else {
         const relay = `ws://${link}/relay/`
@@ -358,7 +358,7 @@ class Server extends EventEmitter {
         con.relays = [infoHash]
         con.hashes = []
         // this.trackers[id] = con
-        this.onRelaySocketConnection(con)
+        self.onRelaySocketConnection(con)
       }
       // finish the rest
     })
@@ -374,16 +374,18 @@ class Server extends EventEmitter {
         this.talkToRelay()
       }
     }, this.relayTimer)
+
     this.intervalActive = setInterval(() => {
-      for(const test in self.trackers){
-        if(!self.trackers[test].active){
-          self.trackers[test].terminate()
+      for(const test in this.trackers){
+        if(!this.trackers[test].active){
+          this.trackers[test].terminate()
           continue
         }
-        self.trackers[test].active = false
-        self.trackers[test].send(JSON.stringify({action: 'ping'}))
+        this.trackers[test].active = false
+        this.trackers[test].send(JSON.stringify({action: 'ping'}))
       }
     }, this.timer)
+    
     this.intervalUsage(60000)
   }
 
