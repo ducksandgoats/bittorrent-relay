@@ -79,16 +79,12 @@ class Server extends EventEmitter {
 
     this.domain = opts.domain || null
     this.id = crypto.createHash('sha1').update(`${this.DHTHOST}:${this.DHTPORT}`).digest('hex')
-    // this.web = {host: '', port: ''}
-    this.address = `ws://${this.domain || this.TRACKERHOST}:${this.TRACKERPORT}`
+    this.dht = {host: this.DHTHOST, port: this.DHTPORT}
+    this.tracker = {host: this.TRACKERHOST, port: this.TRACKERPORT}
+    this.web = `ws://${this.domain || this.TRACKERHOST}:${this.TRACKERPORT}`
     this.status = {cpu: 0, memory: 0, state: 1}
-    // this.guards = new Set()
     this.trackers = {}
-    // this.infohashes = {}
-    // this.infohashRefs = {}
-    // this.trackerRefs = {}
     this.sendTo = {}
-
     this.hashes.forEach((data) => {this.sendTo[data] = []})
 
     // start a websocket tracker (for WebTorrent) unless the user explicitly says no
@@ -99,11 +95,11 @@ class Server extends EventEmitter {
     }
     this.http.onListening = () => {
       debug('listening')
-      const test = self.http.address()
-      self.address = `ws://${self.domain || test.address}:${test.port}`
+      self.tracker = self.http.address()
+      self.web = `ws://${self.domain || self.tracker.address}:${self.tracker.port}`
       for(const socket in this.trackers){
         if(this.trackers[socket].readyState === 1){
-          this.trackers[socket].send(JSON.stringify({action: 'address', domain: self.domain, host: test.address, port: test.port, address: self.address}))
+          this.trackers[socket].send(JSON.stringify({action: 'web', tracker: self.tracker, dht: self.dht, domain: self.domain, web: self.web, trackerHost: self.TRACKERHOST, trackerPort: self.TRACKERPORT, dhtHost: self.DHTHOST, dhtPort: self.DHTPORT}))
         }
       }
       self.talkToRelay()
@@ -323,6 +319,7 @@ class Server extends EventEmitter {
 
     this.relay = new DHT()
     this.relay.onListening = () => {
+      self.dht = self.relay.address()
       self.emit('listening', 'relay')
     }
     this.relay.onReady = () => {
@@ -527,7 +524,7 @@ class Server extends EventEmitter {
     }
     socket.onOpen = function(){
       self.trackers[socket.id] = socket
-      socket.send(JSON.stringify({id: self.id, address: self.address, domain: self.domain, host: self.DHTHOST, port: self.DHTPORT, relays: self.relays, hashes: self.hashes, action: 'session'}))
+      socket.send(JSON.stringify({id: self.id, tracker: self.tracker, trackerHost: self.TRACKERHOST, trackerPort: self.TRACKERPORT, dhtHost: self.DHTHOST, dhtPort: self.DHTPORT, web: self.web, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
       self.emit('error', 'ws', err)
@@ -536,15 +533,19 @@ class Server extends EventEmitter {
     socket.onData = function(data, buffer){
       const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
       if(message.action === 'session'){
-        if(socket.id !== message.id || socket.id !== crypto.createHash('sha1').update(`${message.host}:${message.port}`).digest('hex')){
+        if(socket.id !== message.id || socket.id !== crypto.createHash('sha1').update(`${message.dhtHost}:${message.dhtPort}`).digest('hex')){
           socket.terminate()
         }
         socket.domain = message.domain
-        socket.address = message.address
-        socket.relay = message.address + '/relay'
-        socket.announce = message.address + '/announce'
-        socket.dhtHost = message.host
-        socket.dhtPort = message.port
+        socket.tracker = message.tracker
+        socket.web = message.web
+        socket.dht = message.dht
+        socket.relay = message.web + '/relay'
+        socket.announce = message.web + '/announce'
+        socket.dhtHost = message.dhtHost
+        socket.dhtPort = message.dhtPort
+        socket.trackerHost = message.trackerHost
+        socket.trackerPort = message.trackerPort
         for(const messageRelay of message.relays){
           if(self.relays.includes(messageRelay)){
             if(!socket.relays.includes(messageRelay)){
@@ -560,20 +561,39 @@ class Server extends EventEmitter {
           }
         }
       }
-      if(message.action === 'address'){
+      if(message.action === 'web'){
         if(socket.domain !== message.domain){
           socket.domain = message.domain
         }
-        if(socket.address !== message.address){
-          socket.address = message.address
-          socket.relay = message.address + '/relay'
-          socket.announce = message.address + '/announce'
+        if(socket.tracker.address !== message.tracker.address || socket.tracker.port !== message.tracker.port){
+          socket.tracker = message.tracker
         }
-        if(socket.trackerHost !== message.host){
-          socket.trackerHost = message.host
+        if(socket.dht.address !== message.dht.address || socket.dht.port !== message.dht.port){
+          socket.dht = message.dht
         }
-        if(socket.trackerPort !== message.port){
-          socket.trackerPort = message.port
+        if(socket.web !== message.web){
+          for(const messageHash of socket.hashes){
+            const useLink = socket.announce + '/' + messageHash
+            if(self.sendTo[messageHash].includes(useLink)){
+              self.sendTo[messageHash].splice(self.sendTo[messageHash].indexOf(useLink), 1)
+              self.sendTo[messageHash].push(message.web + '/announce/' + messageHash)
+            }
+          }
+          socket.web = message.web
+          socket.relay = message.web + '/relay'
+          socket.announce = message.web + '/announce'
+        }
+        if(socket.trackerHost !== message.trackerHost){
+          socket.trackerHost = message.trackerHost
+        }
+        if(socket.trackerPort !== message.trackerPort){
+          socket.trackerPort = message.trackerPort
+        }
+        if(socket.dhtHost !== message.dhtHost){
+          socket.dhtHost = message.dhtHost
+        }
+        if(socket.dhtPort !== message.dhtPort){
+          socket.dhtPort = message.dhtPort
         }
       }
       if(message.action === 'status'){
