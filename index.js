@@ -513,7 +513,7 @@ class Server extends EventEmitter {
     socket.takeOff = function(){
       socket.off('open', socket.onOpen)
       socket.off('error', socket.onError)
-      socket.off('data', socket.onData)
+      socket.off('message', socket.onMessage)
       socket.off('close', socket.onClose)
     }
     socket.onOpen = function(){
@@ -524,7 +524,7 @@ class Server extends EventEmitter {
       self.emit('error', 'ws', err)
       socket.terminate()
     }
-    socket.onData = function(data, buffer){
+    socket.onMessage = function(data, buffer){
       const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
       if(message.action === 'session'){
         if(self.trackers[message.id]){
@@ -635,7 +635,7 @@ class Server extends EventEmitter {
     }
     socket.on('open', socket.onOpen)
     socket.on('error', socket.onError)
-    socket.on('data', socket.onData)
+    socket.on('message', socket.onMessage)
     socket.on('close', socket.onClose)
   }
 
