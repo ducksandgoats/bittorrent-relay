@@ -349,7 +349,7 @@ class Server extends EventEmitter {
       } else {
         const relay = `ws://${link}/relay/`
         // const announce = `ws://${link}/announce/`
-        const con = new WebSocket(relay + this.id)
+        const con = new WebSocket(relay + self.id)
         // con.relay = relay
         // con.announce = announce
         con.id = id
