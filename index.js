@@ -97,7 +97,6 @@ class Server extends EventEmitter {
     this.http.onListening = () => {
       debug('listening')
       self.tracker = self.http.address()
-      self.id = crypto.createHash('sha1').update(`${self.domain || self.tracker.address}:${self.tracker.port}`).digest('hex')
       self.web = `ws://${self.domain || self.tracker.address}:${self.tracker.port}`
       for(const socket in self.trackers){
         if(self.trackers[socket].readyState === 1){
@@ -347,7 +346,6 @@ class Server extends EventEmitter {
       const con = new WebSocket(relay + self.id)
       // con.relay = relay
       // con.announce = announce
-      // con.id = id
       con.active = true
       // con.link = link
       con.relays = [infoHash]
