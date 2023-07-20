@@ -320,6 +320,7 @@ class Server extends EventEmitter {
     this.relay = new DHT()
     this.relay.onListening = () => {
       self.dht = self.relay.address()
+      self.id = crypto.createHash('sha1').update(`${self.dht.address}:${self.dht.port}`).digest('hex')
       self.emit('listening', 'relay')
     }
     this.relay.onReady = () => {
@@ -385,7 +386,7 @@ class Server extends EventEmitter {
         this.trackers[test].send(JSON.stringify({action: 'ping'}))
       }
     }, this.timer)
-    
+
     this.intervalUsage(60000)
   }
 
