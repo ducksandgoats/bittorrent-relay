@@ -12,6 +12,7 @@ import common from './lib/common.js'
 import Swarm from './lib/swarm.js'
 import parseWebSocketRequest from './lib/parse-websocket.js'
 import crypto from 'crypto'
+import {nanoid} from 'nanoid'
 
 const debug = Debug('bittorrent-tracker:server')
 const hasOwnProperty = Object.prototype.hasOwnProperty
@@ -78,7 +79,7 @@ class Server extends EventEmitter {
     }
 
     this.domain = opts.domain || null
-    this.id = crypto.createHash('sha1').update(`${this.domain || this.TRACKERHOST}:${this.TRACKERPORT}`).digest('hex')
+    this.id = crypto.createHash('sha1').update(nanoid()).digest('hex')
     this.dht = {host: this.DHTHOST, port: this.DHTPORT}
     this.tracker = {host: this.TRACKERHOST, port: this.TRACKERPORT}
     this.web = `ws://${this.domain || this.TRACKERHOST}:${this.TRACKERPORT}`
@@ -341,26 +342,18 @@ class Server extends EventEmitter {
       // if not connected, then connect socket
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
-      const link = `${peer.host}:${peer.port}`
-      const id = crypto.createHash('sha1').update(link).digest('hex')
-      if(self.trackers[id]){
-        if(!self.trackers[id].relays.includes(infoHash)){
-          self.trackers[id].relays.push(infoHash)
-        }
-      } else {
-        const relay = `ws://${link}/relay/`
-        // const announce = `ws://${link}/announce/`
-        const con = new WebSocket(relay + self.id)
-        // con.relay = relay
-        // con.announce = announce
-        con.id = id
-        con.active = true
-        // con.link = link
-        con.relays = [infoHash]
-        con.hashes = []
-        // this.trackers[id] = con
-        self.onRelaySocketConnection(con)
-      }
+      const relay = `ws://${peer.host}:${peer.port}/relay/`
+      // const announce = `ws://${link}/announce/`
+      const con = new WebSocket(relay + self.id)
+      // con.relay = relay
+      // con.announce = announce
+      // con.id = id
+      con.active = true
+      // con.link = link
+      con.relays = [infoHash]
+      con.hashes = []
+      // this.trackers[id] = con
+      self.onRelaySocketConnection(con)
       // finish the rest
     })
     // this.relay.on('announce', (peer, infoHash) => {
@@ -526,7 +519,7 @@ class Server extends EventEmitter {
       socket.off('close', socket.onClose)
     }
     socket.onOpen = function(){
-      self.trackers[socket.id] = socket
+      // self.trackers[socket.id] = socket
       socket.send(JSON.stringify({id: self.id, tracker: self.tracker, trackerHost: self.TRACKERHOST, trackerPort: self.TRACKERPORT, dhtHost: self.DHTHOST, dhtPort: self.DHTPORT, web: self.web, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
@@ -536,9 +529,10 @@ class Server extends EventEmitter {
     socket.onData = function(data, buffer){
       const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
       if(message.action === 'session'){
-        if(socket.id !== message.id || socket.id !== crypto.createHash('sha1').update(`${message.dhtHost}:${message.dhtPort}`).digest('hex')){
+        if(self.trackers[message.id]){
           socket.terminate()
         }
+        socket.id = message.id
         socket.domain = message.domain
         socket.tracker = message.tracker
         socket.web = message.web
