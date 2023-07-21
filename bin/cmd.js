@@ -17,17 +17,17 @@ const argv = minimist(process.argv.slice(2), {
   ],
   string: [
     'domain',
-    'tracker-host',
-    'dht-host'
+    'address'
   ],
   default: {
     'dht-port': 16881,
     'tracker-port': 16969,
+    'port': 16969,
+    'host': '0.0.0.0',
     'announce-timer': 10 * 60 * 1000,
     'relay-timer': 5 * 60 * 1000,
     'timer': 1 * 60 * 1000,
-    'dht-host': '0.0.0.0',
-    'tracker-host': '0.0.0.0',
+    'address': '0.0.0.0',
     'domain': '',
     'trust-proxy': null
   }
