@@ -30,8 +30,9 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Number}  opts.timer       interval for general things like checking for active and inactive connections (ms)
  * @param {Number}  opts.dhtPort      port used for the dht
  * @param {Number}  opts.trackerPort     port used for the tracker
- * @param {String}  opts.dhtHost     host used for the dht
- * @param {String}  opts.trackerHost     host used for the tracker
+ * @param {String}  opts.address     address used for the dht and the tracker
+ * @param {String}  opts.host     host used for server
+ * @param {Number}  opts.port     port used for server
  * @param {String}  opts.domain     domain name that will be used
  * @param {Boolean}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
  */
@@ -55,12 +56,17 @@ class Server extends EventEmitter {
 
     // this.cpuLimit = 100
     // this.memLimit = 1700000000
+    this.domain = opts.domain || null
     this.timer = opts.timer || 1 * 60 * 1000
     this.relayTimer = opts.relayTimer ? opts.relayTimer : 5 * 60 * 1000
     this.DHTPORT = opts.dhtPort || 16881
     this.TRACKERPORT = opts.trackerPort || 16969
-    this.DHTHOST = opts.dhtHost || '0.0.0.0'
-    this.TRACKERHOST = opts.trackerHost || '0.0.0.0'
+    this.ADDRESS = opts.address || '0.0.0.0'
+    this.host = opts.host
+    if(!this.host){
+      throw new Error('must have host')
+    }
+    this.port = opts.port || this.TRACKERPORT
     this.hashes = (() => {if(!opts.hashes){return [];}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',');})()
     if(!this.hashes.length){
       throw new Error('hashes can not be empty')
@@ -77,12 +83,10 @@ class Server extends EventEmitter {
         cb(new Error('disallowed torrent'))
       }
     }
-
-    this.domain = opts.domain || null
-    this.id = crypto.createHash('sha1').update(nanoid()).digest('hex')
-    this.dht = {host: this.DHTHOST, port: this.DHTPORT}
-    this.tracker = {host: this.TRACKERHOST, port: this.TRACKERPORT}
-    this.web = `ws://${this.domain || this.TRACKERHOST}:${this.TRACKERPORT}`
+    this.dht = {host: this.ADDRESS, port: this.DHTPORT}
+    this.tracker = {host: this.ADDRESS, port: this.TRACKERPORT}
+    this.id = crypto.createHash('sha1').update(this.host + ':' + this.port).digest('hex')
+    this.web = `ws://${this.domain || this.host}:${this.port}`
     this.status = {cpu: 0, memory: 0, state: 1}
     this.trackers = {}
     this.sendTo = {}
@@ -96,11 +100,9 @@ class Server extends EventEmitter {
     }
     this.http.onListening = () => {
       debug('listening')
-      self.tracker = self.http.address()
-      self.web = `ws://${self.domain || self.tracker.address}:${self.tracker.port}`
       for(const socket in self.trackers){
         if(self.trackers[socket].readyState === 1){
-          self.trackers[socket].send(JSON.stringify({action: 'web', tracker: self.tracker, dht: self.dht, domain: self.domain, web: self.web, trackerHost: self.TRACKERHOST, trackerPort: self.TRACKERPORT, dhtHost: self.DHTHOST, dhtPort: self.DHTPORT}))
+          self.trackers[socket].send(JSON.stringify({action: 'web', address: self.ADDRESS, tracker: self.tracker, dht: self.dht, domain: self.domain, host: self.host, port: self.port, web: self.web, id: self.id}))
         }
       }
       self.talkToRelay()
@@ -341,17 +343,21 @@ class Server extends EventEmitter {
       // if not connected, then connect socket
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
-      const relay = `ws://${peer.host}:${peer.port}/relay/`
-      // const announce = `ws://${link}/announce/`
-      const con = new WebSocket(relay + self.id)
-      // con.relay = relay
-      // con.announce = announce
-      con.active = true
-      // con.link = link
-      con.relays = [infoHash]
-      con.hashes = []
-      // this.trackers[id] = con
-      self.onRelaySocketConnection(con)
+      const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
+      if(!self.trackers[id]){
+        const relay = `ws://${peer.host}:${peer.port}/relay/`
+        // const announce = `ws://${link}/announce/`
+        const con = new WebSocket(relay + self.id)
+        // con.relay = relay
+        // con.announce = announce
+        con.active = true
+        // con.link = link
+        con.relays = [infoHash]
+        con.hashes = []
+        con.id = id
+        // this.trackers[id] = con
+        self.onRelaySocketConnection(con)
+      }
       // finish the rest
     })
     // this.relay.on('announce', (peer, infoHash) => {
@@ -442,10 +448,10 @@ class Server extends EventEmitter {
 
   turnOn(cb){
     if(!this.relay.listening){
-      this.relay.listen(this.DHTPORT, this.DHTHOST)
+      this.relay.listen(this.DHTPORT, this.ADDRESS)
     }
     if(!this.http.listening){
-      this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+      this.http.listen(this.TRACKERPORT, this.ADDRESS)
     }
     if(cb){
       cb()
@@ -458,7 +464,7 @@ class Server extends EventEmitter {
       // this.http.on('listening', this.http.onListening)
       // this.http.on('request', this.http.onRequest)
       // this.http.on('close', this.http.onClose)
-      this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+      this.http.listen(this.TRACKERPORT, this.ADDRESS)
     }
   }
 
@@ -517,8 +523,8 @@ class Server extends EventEmitter {
       socket.off('close', socket.onClose)
     }
     socket.onOpen = function(){
-      // self.trackers[socket.id] = socket
-      socket.send(JSON.stringify({id: self.id, tracker: self.tracker, trackerHost: self.TRACKERHOST, trackerPort: self.TRACKERPORT, dhtHost: self.DHTHOST, dhtPort: self.DHTPORT, web: self.web, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+      self.trackers[socket.id] = socket
+      socket.send(JSON.stringify({id: self.id, address: self.ADDRESS, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
       self.emit('error', 'ws', err)
@@ -533,14 +539,13 @@ class Server extends EventEmitter {
         socket.id = message.id
         socket.domain = message.domain
         socket.tracker = message.tracker
+        socket.address = message.address
+        socket.port = message.port
+        socket.host = message.host
         socket.web = message.web
         socket.dht = message.dht
         socket.relay = message.web + '/relay'
         socket.announce = message.web + '/announce'
-        socket.dhtHost = message.dhtHost
-        socket.dhtPort = message.dhtPort
-        socket.trackerHost = message.trackerHost
-        socket.trackerPort = message.trackerPort
         for(const messageRelay of message.relays){
           if(self.relays.includes(messageRelay)){
             if(!socket.relays.includes(messageRelay)){
@@ -577,18 +582,6 @@ class Server extends EventEmitter {
           socket.web = message.web
           socket.relay = message.web + '/relay'
           socket.announce = message.web + '/announce'
-        }
-        if(socket.trackerHost !== message.trackerHost){
-          socket.trackerHost = message.trackerHost
-        }
-        if(socket.trackerPort !== message.trackerPort){
-          socket.trackerPort = message.trackerPort
-        }
-        if(socket.dhtHost !== message.dhtHost){
-          socket.dhtHost = message.dhtHost
-        }
-        if(socket.dhtPort !== message.dhtPort){
-          socket.dhtPort = message.dhtPort
         }
       }
       if(message.action === 'status'){
