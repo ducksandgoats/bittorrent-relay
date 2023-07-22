@@ -12,7 +12,7 @@ import common from './lib/common.js'
 import Swarm from './lib/swarm.js'
 import parseWebSocketRequest from './lib/parse-websocket.js'
 import crypto from 'crypto'
-import {nanoid} from 'nanoid'
+// import {nanoid} from 'nanoid'
 
 const debug = Debug('bittorrent-tracker:server')
 const hasOwnProperty = Object.prototype.hasOwnProperty
