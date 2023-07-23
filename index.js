@@ -295,6 +295,7 @@ class Server extends EventEmitter {
             socket.terminate()
           } else {
             socket.id = hash
+            socket.server = true
             socket.active = true
             socket.relays = []
             socket.hashes = []
@@ -354,6 +355,7 @@ class Server extends EventEmitter {
         const con = new WebSocket(relay + self.id)
         // con.relay = relay
         // con.announce = announce
+        con.server = false
         con.active = true
         // con.link = link
         con.relays = [infoHash]
@@ -527,7 +529,7 @@ class Server extends EventEmitter {
       socket.off('close', socket.onClose)
     }
     socket.onOpen = function(){
-      self.trackers[socket.id] = socket
+      // self.trackers[socket.id] = socket
       socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
@@ -540,9 +542,7 @@ class Server extends EventEmitter {
         if(socket.id !== message.id){
           socket.terminate()
         }
-        if(!self.trackers[socket.id]){
-          self.trackers[socket.id] = socket
-        }
+        self.trackers[socket.id] = socket
         socket.id = message.id
         socket.domain = message.domain
         socket.tracker = message.tracker
@@ -566,6 +566,7 @@ class Server extends EventEmitter {
             }
           }
         }
+        socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
       }
       if(message.action === 'web'){
         if(socket.domain !== message.domain){
