@@ -537,9 +537,6 @@ class Server extends EventEmitter {
     socket.onMessage = function(data, buffer){
       const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
       if(message.action === 'session'){
-        if(socket.id !== message.id){
-          socket.terminate()
-        }
         socket.id = message.id
         socket.domain = message.domain
         socket.tracker = message.tracker
