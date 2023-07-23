@@ -541,33 +541,34 @@ class Server extends EventEmitter {
       if(message.action === 'session'){
         if(socket.id !== message.id){
           socket.terminate()
-        }
-        self.trackers[socket.id] = socket
-        socket.id = message.id
-        socket.domain = message.domain
-        socket.tracker = message.tracker
-        socket.port = message.port
-        socket.host = message.host
-        socket.web = message.web
-        socket.dht = message.dht
-        socket.relay = message.web + '/relay'
-        socket.announce = message.web + '/announce'
-        for(const messageRelay of message.relays){
-          if(self.relays.includes(messageRelay)){
-            if(!socket.relays.includes(messageRelay)){
-              socket.relays.push(messageRelay)
+        } else {
+          self.trackers[socket.id] = socket
+          socket.id = message.id
+          socket.domain = message.domain
+          socket.tracker = message.tracker
+          socket.port = message.port
+          socket.host = message.host
+          socket.web = message.web
+          socket.dht = message.dht
+          socket.relay = message.web + '/relay'
+          socket.announce = message.web + '/announce'
+          for(const messageRelay of message.relays){
+            if(self.relays.includes(messageRelay)){
+              if(!socket.relays.includes(messageRelay)){
+                socket.relays.push(messageRelay)
+              }
             }
           }
-        }
-        for(const messageHash of message.hashes){
-          if(self.hashes.includes(messageHash)){
-            if(!socket.hashes.includes(messageHash)){
-              socket.hashes.push(messageHash)
+          for(const messageHash of message.hashes){
+            if(self.hashes.includes(messageHash)){
+              if(!socket.hashes.includes(messageHash)){
+                socket.hashes.push(messageHash)
+              }
             }
           }
-        }
-        if(socket.server){
-          socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+          if(socket.server){
+            socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+          }
         }
       }
       if(message.action === 'web'){
