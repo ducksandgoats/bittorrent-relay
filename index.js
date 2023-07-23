@@ -346,7 +346,7 @@ class Server extends EventEmitter {
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
       const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
-      if(self.trackers[id]){
+      if(self.trackers[id] || self.id === id){
         return
       } else {
         const relay = `ws://${peer.host}:${peer.port}/relay/`
@@ -626,8 +626,8 @@ class Server extends EventEmitter {
     }
     socket.onClose = function(code, reason){
       socket.takeOff()
-      console.log(code, reason)
       delete self.trackers[socket.id]
+      console.log(code, reason)
     }
     socket.on('open', socket.onOpen)
     socket.on('error', socket.onError)
