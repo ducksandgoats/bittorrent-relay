@@ -566,7 +566,9 @@ class Server extends EventEmitter {
             }
           }
         }
-        socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+        if(socket.server){
+          socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+        }
       }
       if(message.action === 'web'){
         if(socket.domain !== message.domain){
