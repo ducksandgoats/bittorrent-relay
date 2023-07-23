@@ -239,13 +239,20 @@ class Server extends EventEmitter {
             ${printClients(stats.clients)}
           `.replace(/^\s+/gm, '')) // trim left
         }
-      } else if(req.method === 'GET' && req.url === '/i'){
+      } else if(req.method === 'GET' && req.url === '/h'){
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify(self.hashes))
+      } else if(req.method === 'GET' && req.url === '/l'){
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify(self.sendTo))
       } else if(req.method === 'GET' && req.url.startsWith('/i/')){
         const test = req.url.replace('/i/', '')
         res.setHeader('Content-Type', 'application/json')
-        res.end(self.sendTo[test] ? JSON.stringify(self.sendTo[test]) : JSON.stringify([]))
+        // res.end(self.sendTo[test] ? JSON.stringify(self.sendTo[test]) : JSON.stringify([]))
+        res.end(JSON.stringify(self.sendTo[test]))
+      } if(req.method === 'GET' && req.url === '/zed'){
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify('thanks for using bittorrent-relay'))
       } else {
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify('error'))
