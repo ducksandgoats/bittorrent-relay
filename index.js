@@ -346,7 +346,9 @@ class Server extends EventEmitter {
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
       const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
-      if(!self.trackers[id]){
+      if(self.trackers[id]){
+        return
+      } else {
         const relay = `ws://${peer.host}:${peer.port}/relay/`
         // const announce = `ws://${link}/announce/`
         const con = new WebSocket(relay + self.id)
@@ -535,7 +537,7 @@ class Server extends EventEmitter {
     socket.onMessage = function(data, buffer){
       const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
       if(message.action === 'session'){
-        if(self.trackers[message.id]){
+        if(socket.id !== message.id){
           socket.terminate()
         }
         socket.id = message.id
