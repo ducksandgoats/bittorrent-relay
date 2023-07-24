@@ -641,7 +641,7 @@ class Server extends EventEmitter {
     socket.onClose = function(code, reason){
       socket.takeOff()
       delete self.trackers[socket.id]
-      console.log(code, reason)
+      console.log(code, reason.toString('utf-8'))
     }
     socket.on('open', socket.onOpen)
     socket.on('error', socket.onError)
