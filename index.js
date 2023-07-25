@@ -290,7 +290,7 @@ class Server extends EventEmitter {
         if(action === 'announce'){
           if(self.status.state !== 1 && self.sendTo[hash] && self.sendTo[hash].length){
             // send them tracker url that is usable then close the socket
-            socket.send(JSON.stringify({action: 'relay', tracker: self.sendTo[hash][Math.floor(Math.random() * self.sendTo[hash].length)]}))
+            socket.send(JSON.stringify({action: 'relay', relay: self.sendTo[hash][Math.floor(Math.random() * self.sendTo[hash].length)]}))
             socket.terminate()
           } else {
             // use regular socket function from bittorrent-tracker
