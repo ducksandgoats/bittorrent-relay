@@ -21,7 +21,8 @@ const argv = minimist(process.argv.slice(2), {
     'domain',
     'dht-host',
     'tracker-host',
-    'host'
+    'host',
+    'hashes'
   ],
   default: {
     'dht-port': 16881,
@@ -36,7 +37,8 @@ const argv = minimist(process.argv.slice(2), {
     'domain': '',
     'trust-proxy': null,
     'auth': null,
-    'dir': path.join(process.cwd(), 'dir')
+    'dir': path.join(process.cwd(), 'dir'),
+    'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3'
   }
 })
 
