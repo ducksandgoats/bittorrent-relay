@@ -357,9 +357,18 @@ class Server extends EventEmitter {
           }
         })
       } else {
-        res.statusCode = 400
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify('error'))
+        if(req.method === 'HEAD'){
+          res.statusCode = 400
+          res.setHeader('X-Error', 'invalid method or path')
+          res.end('')
+        } else if(req.method === 'GET'){
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify('invalid method or path'))
+        } else {
+          res.statusCode = 400
+          res.end('')
+        }
       }
     }
     this.http.onClose = () => {
