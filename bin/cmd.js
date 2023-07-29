@@ -94,7 +94,8 @@ const sever = new Server({
   auth: argv['auth'],
   dir: argv['dir'],
   host: argv['host'],
-  port: argv['port']
+  port: argv['port'],
+  hashes: argv['hashes']
 })
 
 sever.on('listening', (which) => {
