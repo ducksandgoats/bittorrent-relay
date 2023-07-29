@@ -2,6 +2,8 @@
 
 import minimist from 'minimist'
 import Relay from '../index.js'
+import path from 'path'
+import fs from 'fs'
 
 const argv = minimist(process.argv.slice(2), {
   alias: {
@@ -29,7 +31,9 @@ const argv = minimist(process.argv.slice(2), {
     'timer': 1 * 60 * 1000,
     'address': '0.0.0.0',
     'domain': '',
-    'trust-proxy': null
+    'trust-proxy': null,
+    'auth': null,
+    'dir': path.join(__dirname, '..', 'dir')
   }
 })
 
@@ -68,6 +72,10 @@ if (argv.help) {
   process.exit(0)
 }
 
+if(!fs.existsSync(argv['dir'])){
+  fs.mkdirSync(argv['dir'], {recursive: true})
+}
+
 const relay = new Relay({
   announceTimer: argv['announce-timer'],
   relayTimer: argv['relay-timer'],
@@ -77,7 +85,9 @@ const relay = new Relay({
   dhtPort: argv['dht-port'],
   trackerPort: argv['tracker-port'],
   dhtHost: argv['dht-host'],
-  trackerHost: argv['tracker-host']
+  trackerHost: argv['tracker-host'],
+  auth: argv['auth'],
+  dir: argv['dir']
 })
 
 relay.on('listening', (which) => {
