@@ -97,7 +97,7 @@ class Server extends EventEmitter {
       throw new Error('must have host')
     }
     this.port = opts.port || this.TRACKERPORT
-    this.hashes = opt.hashes ? opts.hashes.split(',').filter(Boolean) : []
+    this.hashes = opts.hashes ? opts.hashes.split(',').filter(Boolean) : []
     if(!this.hashes.length){
       throw new Error('hashes can not be empty')
     }
