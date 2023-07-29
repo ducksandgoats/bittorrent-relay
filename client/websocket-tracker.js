@@ -5,7 +5,7 @@ import Socket from '@thaunknown/simple-websocket'
 import Socks from 'socks'
 import { arr2text, arr2hex, hex2bin, bin2hex, randomBytes } from 'uint8-util'
 
-import common from '../common.js'
+import common from '../lib/common.js'
 import Tracker from './tracker.js'
 
 const debug = Debug('bittorrent-tracker:websocket-tracker')

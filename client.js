@@ -6,7 +6,7 @@ import Peer from '@thaunknown/simple-peer/lite.js'
 import queueMicrotask from 'queue-microtask'
 import { hex2arr, hex2bin, text2arr, arr2hex, arr2text } from 'uint8-util'
 
-import common from '../bittorrent-tracker/lib/common.js'
+import common from './lib/common.js'
 import WebSocketTracker from './client/websocket-tracker.js'
 
 const debug = Debug('bittorrent-tracker:client')

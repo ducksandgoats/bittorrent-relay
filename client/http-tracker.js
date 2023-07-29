@@ -6,7 +6,7 @@ import get from 'simple-get'
 import Socks from 'socks'
 import { bin2hex, hex2bin, arr2text } from 'uint8-util'
 
-import common from '../common.js'
+import common from '../lib/common.js'
 import Tracker from './tracker.js'
 import compact2string from 'compact2string'
 

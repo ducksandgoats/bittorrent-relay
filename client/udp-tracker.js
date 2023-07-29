@@ -5,7 +5,7 @@ import dgram from 'dgram'
 import Socks from 'socks'
 import { concat, hex2arr, randomBytes } from 'uint8-util'
 
-import common from '../common.js'
+import common from '../lib/common.js'
 import Tracker from './tracker.js'
 import compact2string from 'compact2string'
 
