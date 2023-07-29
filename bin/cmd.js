@@ -90,7 +90,9 @@ const sever = new Server({
   dhtHost: argv['dht-host'],
   trackerHost: argv['tracker-host'],
   auth: argv['auth'],
-  dir: argv['dir']
+  dir: argv['dir'],
+  host: argv['host'],
+  port: argv['port']
 })
 
 sever.on('listening', (which) => {
