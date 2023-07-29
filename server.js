@@ -12,6 +12,9 @@ import common from './server/common.js'
 import Swarm from './server/swarm.js'
 import parseWebSocketRequest from './server/parse-websocket.js'
 import crypto from 'crypto'
+import bcrypt from 'bcryptjs'
+import fs from 'fs'
+import path from 'path'
 // import {nanoid} from 'nanoid'
 
 const debug = Debug('bittorrent-tracker:server')
@@ -36,12 +39,36 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Number}  opts.port     port used for server
  * @param {String}  opts.domain     domain name that will be used
  * @param {Boolean}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
+ * @param {Boolean}  opts.auth     password to add infohashes
+ * @param {Boolean}  opts.dir     directory to store config files
  */
 
 class Server extends EventEmitter {
   constructor (opts = {}) {
     super()
     debug('new server %s', JSON.stringify(opts))
+
+    const self = this
+
+    this.dir = opts.dir || __dirname
+    this.auth = opts.auth || null
+    if(this.auth){
+      bcrypt.hash(opts.auth, 10, function(err, hash) {
+        if(err){
+          throw err
+        } else if(hash){
+          fs.writeFile(path.join(this.dir, 'relay.txt'), hash, {}, (error) => {
+            if(error){
+              throw error
+            } else {
+              self.auth = hash
+            }
+          })
+        } else {
+          throw new Error('could not generate hash')
+        }
+      })
+    }
     
     this.intervalMs = opts.announceTimer
       ? opts.announceTimer
@@ -95,7 +122,6 @@ class Server extends EventEmitter {
     this.hashes.forEach((data) => {this.sendTo[data] = []})
 
     // start a websocket tracker (for WebTorrent) unless the user explicitly says no
-    const self = this
     this.http = http.createServer()
     this.http.onError = (err) => {
       self.emit('error', 'http', err)
@@ -167,7 +193,7 @@ class Server extends EventEmitter {
         return html
       }
   
-      if (req.method === 'GET' && (req.url === '/stats' || req.url === '/stats.json')) {
+      if(req.method === 'GET' && (req.url === '/stats' || req.url === '/stats.json')){
         infoHashes.forEach(infoHash => {
           const peers = self.torrents[infoHash].peers
           const keys = peers.keys
@@ -253,7 +279,85 @@ class Server extends EventEmitter {
       } if(req.method === 'GET' && req.url === '/zed'){
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify('thanks for using bittorrent-relay'))
+      } if(this.auth && req.method === 'HEAD' && req.url.startsWith('/add/') && req.headers['x-auth']){
+        bcrypt.compare(req.headers['x-auth'], this.auth, (err, data) => {
+          if(err){
+            res.statusCode = 500
+            res.end('')
+          } else {
+            if(data){
+              res.statusCode = 200
+              const ih = req.url.replace('/add/', '')
+              const testHash = crypto.createHash('sha1').update(ih + "'s").digest('hex')
+              const doesNotHaveRelay = !this.relays.includes(testHash)
+              const doesNotHaveHash = !this.hashes.includes(ih)
+              if(doesNotHaveRelay){
+                this.relays.push(testHash)
+                this.relay.lookup(testHash, (err, num) => {
+                  console.log(err, num)
+                })
+              }
+              if(doesNotHaveHash){
+                this.hashes.push(ih)
+                this.relay.announce(ih, this.TRACKERPORT, (err) => {
+                  console.log(err)
+                })
+                this.sendTo[ih] = []
+              }
+              if(doesNotHaveRelay || doesNotHaveHash){
+                for(const testObj of this.trackers){
+                  this.trackers[testObj].send(JSON.stringify({action: 'add', relay: testHash, hash: ih}))
+                }
+              }
+              res.end('')
+            } else {
+              res.statusCode = 400
+              res.end('')
+            }
+          }
+        })
+      } if(this.auth && req.method === 'HEAD' && req.url.startsWith('/sub/') && req.headers['x-auth']){
+        bcrypt.compare(req.headers['x-auth'], this.auth, (err, data) => {
+          if(err){
+            res.statusCode = 500
+            res.end('')
+          } else {
+            if(data){
+              res.statusCode = 200
+              const ih = req.url.replace('/sub/', '')
+              const testHash = crypto.createHash('sha1').update(ih + "'s").digest('hex')
+              const hasRelay = this.relays.includes(testHash)
+              const hasHash = this.hashes.includes(ih)
+              if(hasRelay){
+                this.relay.splice(this.relays.indexOf(testHash), 1)
+              }
+              if(hasHash){
+                this.hashes.splice(this.hashes.indexOf(ih), 1)
+                delete this.sendTo[ih]
+              }
+              if(hasRelay || hasHash){
+                for(const testObj of this.trackers){
+                  if(this.trackers[testObj].relays.includes(testHash)){
+                    this.trackers[testObj].relays.splice(this.trackers[testObj].relays.indexOf(testHash), 1)
+                  }
+                  if(this.trackers[testObj].hashes.includes(ih)){
+                    this.trackers[testObj].hashes.splice(this.trackers[testObj].hashes.indexOf(ih), 1)
+                  }
+                  this.trackers[testObj].send(JSON.stringify({action: 'sub', relay: testHash, hash: ih}))
+                  if(!this.trackers[testObj].relays.length || !this.trackers[testObj].hashes.length){
+                    this.trackers[testObj].terminate()
+                  }
+                }
+              }
+              res.end('')
+            } else {
+              res.statusCode = 400
+              res.end('')
+            }
+          }
+        })
       } else {
+        res.statusCode = 400
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify('error'))
       }
@@ -353,6 +457,9 @@ class Server extends EventEmitter {
       // if not connected, then connect socket
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
+      if(this.auth && !this.relays.includes(infoHash)){
+        return
+      }
       const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
       if(self.trackers[id] || self.id === id){
         return
@@ -548,34 +655,38 @@ class Server extends EventEmitter {
       if(message.action === 'session'){
         if(socket.id !== message.id){
           socket.terminate()
-        } else {
-          self.trackers[socket.id] = socket
-          socket.id = message.id
-          socket.domain = message.domain
-          socket.tracker = message.tracker
-          socket.port = message.port
-          socket.host = message.host
-          socket.web = message.web
-          socket.dht = message.dht
-          socket.relay = message.web + '/relay'
-          socket.announce = message.web + '/announce'
-          for(const messageRelay of message.relays){
-            if(self.relays.includes(messageRelay)){
-              if(!socket.relays.includes(messageRelay)){
-                socket.relays.push(messageRelay)
-              }
+          return
+        }
+        self.trackers[socket.id] = socket
+        socket.id = message.id
+        socket.domain = message.domain
+        socket.tracker = message.tracker
+        socket.port = message.port
+        socket.host = message.host
+        socket.web = message.web
+        socket.dht = message.dht
+        socket.relay = message.web + '/relay'
+        socket.announce = message.web + '/announce'
+        for(const messageRelay of message.relays){
+          if(self.relays.includes(messageRelay)){
+            if(!socket.relays.includes(messageRelay)){
+              socket.relays.push(messageRelay)
             }
           }
-          for(const messageHash of message.hashes){
-            if(self.hashes.includes(messageHash)){
-              if(!socket.hashes.includes(messageHash)){
-                socket.hashes.push(messageHash)
-              }
+        }
+        for(const messageHash of message.hashes){
+          if(self.hashes.includes(messageHash)){
+            if(!socket.hashes.includes(messageHash)){
+              socket.hashes.push(messageHash)
             }
           }
-          if(socket.server){
-            socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
-          }
+        }
+        if(!socket.relays.length || !socket.hashes.length){
+          socket.terminate()
+          return
+        }
+        if(socket.server){
+          socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
         }
       }
       if(message.action === 'web'){
@@ -599,6 +710,33 @@ class Server extends EventEmitter {
           socket.web = message.web
           socket.relay = message.web + '/relay'
           socket.announce = message.web + '/announce'
+        }
+      }
+      if(message.action === 'add'){
+        if(self.relays.includes(message.relay)){
+          if(!socket.relays.includes(message.relay)){
+            socket.relays.push(message.relay)
+          }
+        }
+        if(self.hashes.includes(message.hash)){
+          if(!socket.hashes.includes(message.hash)){
+            socket.hashes.push(message.hash)
+          }
+        }
+      }
+      if(message.action === 'sub'){
+        if(socket.relays.includes(message.relay)){
+          socket.relays.splice(socket.relays.indexOf(message.relay), 1)
+        }
+        if(socket.hashes.includes(message.hash)){
+          socket.hashes.splice(socket.hashes.indexOf(message.hash), 1)
+        }
+        const useLink = socket.announce + '/' + message.hash
+        if(self.sendTo[message.hash].includes(useLink)){
+          self.sendTo[message.hash].splice(self.sendTo[message.hash].indexOf(useLink), 1)
+        }
+        if(!socket.relays.length || !socket.hashes.length){
+          socket.terminate()
         }
       }
       if(message.action === 'status'){
@@ -640,6 +778,12 @@ class Server extends EventEmitter {
     }
     socket.onClose = function(code, reason){
       socket.takeOff()
+      for(const testHash of socket.hashes){
+        const useLink = socket.announce + '/' + testHash
+        if(self.sendTo[testHash].includes(useLink)){
+          self.sendTo[testHash].splice(self.sendTo[testHash].indexOf(useLink), 1)
+        }
+      }
       delete self.trackers[socket.id]
       console.log(code, reason.toString('utf-8'))
     }
@@ -953,11 +1097,6 @@ Server.Swarm = Swarm
 
 function isObject (obj) {
   return typeof obj === 'object' && obj !== null
-}
-
-function toNumber (x) {
-  x = Number(x)
-  return x >= 0 ? x : false
 }
 
 function noop () {}
