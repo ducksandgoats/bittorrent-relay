@@ -57,7 +57,7 @@ class Server extends EventEmitter {
         if(err){
           throw err
         } else if(hash){
-          fs.writeFile(path.join(this.dir, 'relay.txt'), hash, {}, (error) => {
+          fs.writeFile(path.join(this.dir, 'auth.txt'), hash, {}, (error) => {
             if(error){
               throw error
             } else {
@@ -100,7 +100,21 @@ class Server extends EventEmitter {
     if(!this.hashes.length){
       throw new Error('hashes can not be empty')
     }
+    fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
+      if(err){
+        console.error(err)
+      } else {
+        console.log('saved hashes')
+      }
+    })
     this.relays = this.hashes.map((data) => {return crypto.createHash('sha1').update(data + "'s").digest('hex')})
+    fs.writeFile(path.join(this.dir, 'relays'), JSON.stringify(this.relays), {}, (err) => {
+      if(err){
+        console.error(err)
+      } else {
+        console.log('saved relays')
+      }
+    })
     // this._trustProxy = !!opts.trustProxy
     this._trustProxy = Boolean(opts.trustProxy)
     // if (typeof opts.filter === 'function') this._filter = opts.filter
@@ -305,6 +319,20 @@ class Server extends EventEmitter {
                 this.sendTo[ih] = []
               }
               if(doesNotHaveRelay || doesNotHaveHash){
+                fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
+                  if(err){
+                    console.error(err)
+                  } else {
+                    console.log('saved hashes')
+                  }
+                })
+                fs.writeFile(path.join(this.dir, 'relays'), JSON.stringify(this.relays), {}, (err) => {
+                  if(err){
+                    console.error(err)
+                  } else {
+                    console.log('saved relays')
+                  }
+                })
                 for(const testObj of this.trackers){
                   this.trackers[testObj].send(JSON.stringify({action: 'add', relay: testHash, hash: ih}))
                 }
@@ -336,6 +364,20 @@ class Server extends EventEmitter {
                 delete this.sendTo[ih]
               }
               if(hasRelay || hasHash){
+                fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
+                  if(err){
+                    console.error(err)
+                  } else {
+                    console.log('saved hashes')
+                  }
+                })
+                fs.writeFile(path.join(this.dir, 'relays'), JSON.stringify(this.relays), {}, (err) => {
+                  if(err){
+                    console.error(err)
+                  } else {
+                    console.log('saved relays')
+                  }
+                })
                 for(const testObj of this.trackers){
                   if(this.trackers[testObj].relays.includes(testHash)){
                     this.trackers[testObj].relays.splice(this.trackers[testObj].relays.indexOf(testHash), 1)
