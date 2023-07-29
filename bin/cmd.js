@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import minimist from 'minimist'
-import Relay from '../index.js'
+import {Server} from '../index.js'
 import path from 'path'
 import fs from 'fs'
 
@@ -79,7 +79,7 @@ if(!fs.existsSync(argv['dir'])){
   fs.mkdirSync(argv['dir'], {recursive: true})
 }
 
-const relay = new Relay({
+const sever = new Server({
   announceTimer: argv['announce-timer'],
   relayTimer: argv['relay-timer'],
   timer: argv['timer'],
@@ -93,18 +93,18 @@ const relay = new Relay({
   dir: argv['dir']
 })
 
-relay.on('listening', (which) => {
+sever.on('listening', (which) => {
   console.log('listening', which)
 })
 
-relay.on('error', (which, err) => {
+sever.on('error', (which, err) => {
   console.error('close', which, err)
 })
 
-relay.on('close', (which) => {
+sever.on('close', (which) => {
   console.log('close', which)
 })
 
-relay.turnOn(() => {
+sever.turnOn(() => {
   console.log('turned on')
 })
