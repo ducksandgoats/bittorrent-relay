@@ -41,7 +41,7 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Boolean}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
  * @param {Boolean}  opts.auth     password to add infohashes
  * @param {Boolean}  opts.dir     directory to store config files
- * @param {Boolean}  opts.hashes     directory to store config files
+ * @param {Boolean}  opts.hashes     comma separated infohashes
  */
 
 class Server extends EventEmitter {
