@@ -41,6 +41,7 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Boolean}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
  * @param {Boolean}  opts.auth     password to add infohashes
  * @param {Boolean}  opts.dir     directory to store config files
+ * @param {Boolean}  opts.hashes     directory to store config files
  */
 
 class Server extends EventEmitter {
@@ -92,11 +93,11 @@ class Server extends EventEmitter {
     this.DHTHOST = opts.dhtHost || '0.0.0.0'
     this.TRACKERHOST = opts.trackerHost || '0.0.0.0'
     this.host = opts.host
-    if(!this.host){
+    if(!this.host || this.host === '0.0.0.0'){
       throw new Error('must have host')
     }
     this.port = opts.port || this.TRACKERPORT
-    this.hashes = (() => {if(!opts.hashes){return [];}return Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',');})()
+    this.hashes = opt.hashes ? opts.hashes.split(',').filter(Boolean) : []
     if(!this.hashes.length){
       throw new Error('hashes can not be empty')
     }
