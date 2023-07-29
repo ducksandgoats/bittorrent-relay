@@ -19,7 +19,9 @@ const argv = minimist(process.argv.slice(2), {
   ],
   string: [
     'domain',
-    'address'
+    'dht-host',
+    'tracker-host',
+    'host'
   ],
   default: {
     'dht-port': 16881,
