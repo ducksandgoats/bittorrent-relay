@@ -42,7 +42,8 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Boolean}  opts.auth     password to add infohashes
  * @param {Boolean}  opts.dir     directory to store config files
  * @param {Boolean}  opts.hashes     comma separated infohashes
- * @param {Boolean}  opts.handleFunc     function to handle custom routes
+ * @param {Boolean}  opts.handleProperty     add custom capabilities
+ * @param {Boolean}  opts.handleMethod     handle custom routes
  */
 
 class Server extends EventEmitter {
@@ -71,7 +72,8 @@ class Server extends EventEmitter {
         }
       })
     }
-    this.handleFunc = opts.handleFunc || null
+    this.handleProperty = opts.handleProperty ? opts.handleProperty() : null
+    this.handleMethod = opts.handleMethod || null
     
     this.intervalMs = opts.announceTimer
       ? opts.announceTimer
@@ -447,8 +449,14 @@ class Server extends EventEmitter {
         req.on('error', req.onError)
         req.on('end', req.onEnd)
         req.on('close', req.onClose)
-      } else if(this.handleFunc){
-        this.handleFunc(req, res)
+      } else if(this.handleMethod){
+        try {
+          this.handleFunc(req, this.handleProperty, res)
+        } catch (error) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(error.message))
+        }
       } else {
         res.statusCode = 400
         res.setHeader('Content-Type', 'application/json')
