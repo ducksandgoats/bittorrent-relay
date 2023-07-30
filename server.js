@@ -291,127 +291,164 @@ class Server extends EventEmitter {
         res.setHeader('Content-Type', 'application/json')
         // res.end(self.sendTo[test] ? JSON.stringify(self.sendTo[test]) : JSON.stringify([]))
         res.end(JSON.stringify(self.sendTo[test]))
-      } if(req.method === 'GET' && req.url === '/zed'){
+      } else if(req.method === 'GET' && req.url === '/zed'){
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify('thanks for using bittorrent-relay'))
-      } if(this.auth && req.method === 'HEAD' && req.url.startsWith('/add/') && req.headers['x-auth']){
-        bcrypt.compare(req.headers['x-auth'], this.auth, (err, data) => {
-          if(err){
-            res.statusCode = 500
-            res.end('')
-          } else {
-            if(data){
-              res.statusCode = 200
-              const ih = req.url.replace('/add/', '')
-              const testHash = crypto.createHash('sha1').update(ih + "'s").digest('hex')
-              const doesNotHaveRelay = !this.relays.includes(testHash)
-              const doesNotHaveHash = !this.hashes.includes(ih)
-              if(doesNotHaveRelay){
-                this.relays.push(testHash)
-                this.relay.lookup(testHash, (err, num) => {
-                  console.log(err, num)
-                })
-              }
-              if(doesNotHaveHash){
-                this.hashes.push(ih)
-                this.relay.announce(ih, this.TRACKERPORT, (err) => {
-                  console.log(err)
-                })
-                this.sendTo[ih] = []
-              }
-              if(doesNotHaveRelay || doesNotHaveHash){
-                fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
-                  if(err){
-                    console.error(err)
-                  } else {
-                    console.log('saved hashes')
-                  }
-                })
-                fs.writeFile(path.join(this.dir, 'relays'), JSON.stringify(this.relays), {}, (err) => {
-                  if(err){
-                    console.error(err)
-                  } else {
-                    console.log('saved relays')
-                  }
-                })
-                for(const testObj of this.trackers){
-                  this.trackers[testObj].send(JSON.stringify({action: 'add', relay: testHash, hash: ih}))
-                }
-              }
-              res.end('')
-            } else {
-              res.statusCode = 400
-              res.end('')
-            }
-          }
-        })
-      } if(this.auth && req.method === 'HEAD' && req.url.startsWith('/sub/') && req.headers['x-auth']){
-        bcrypt.compare(req.headers['x-auth'], this.auth, (err, data) => {
-          if(err){
-            res.statusCode = 500
-            res.end('')
-          } else {
-            if(data){
-              res.statusCode = 200
-              const ih = req.url.replace('/sub/', '')
-              const testHash = crypto.createHash('sha1').update(ih + "'s").digest('hex')
-              const hasRelay = this.relays.includes(testHash)
-              const hasHash = this.hashes.includes(ih)
-              if(hasRelay){
-                this.relay.splice(this.relays.indexOf(testHash), 1)
-              }
-              if(hasHash){
-                this.hashes.splice(this.hashes.indexOf(ih), 1)
-                delete this.sendTo[ih]
-              }
-              if(hasRelay || hasHash){
-                fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
-                  if(err){
-                    console.error(err)
-                  } else {
-                    console.log('saved hashes')
-                  }
-                })
-                fs.writeFile(path.join(this.dir, 'relays'), JSON.stringify(this.relays), {}, (err) => {
-                  if(err){
-                    console.error(err)
-                  } else {
-                    console.log('saved relays')
-                  }
-                })
-                for(const testObj of this.trackers){
-                  if(this.trackers[testObj].relays.includes(testHash)){
-                    this.trackers[testObj].relays.splice(this.trackers[testObj].relays.indexOf(testHash), 1)
-                  }
-                  if(this.trackers[testObj].hashes.includes(ih)){
-                    this.trackers[testObj].hashes.splice(this.trackers[testObj].hashes.indexOf(ih), 1)
-                  }
-                  this.trackers[testObj].send(JSON.stringify({action: 'sub', relay: testHash, hash: ih}))
-                  if(!this.trackers[testObj].relays.length || !this.trackers[testObj].hashes.length){
-                    this.trackers[testObj].terminate()
-                  }
-                }
-              }
-              res.end('')
-            } else {
-              res.statusCode = 400
-              res.end('')
-            }
-          }
-        })
-      } else {
-        if(req.method === 'HEAD'){
-          res.statusCode = 400
-          res.setHeader('X-Error', 'invalid method or path')
-          res.end('')
-        } else if(req.method === 'GET'){
-          res.statusCode = 400
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify('invalid method or path'))
-        } else {
-          res.statusCode = 400
-          res.end('')
+      } else if(this.auth && req.method === 'POST' && req.url.startsWith('/add/')){
+        let useAuth = ''
+        let useRes
+        req.onData = function(data){
+          useAuth = useAuth + data.toString()
         }
+        req.onEnd = function(){
+          bcrypt.compare(useAuth, self.auth, (err, data) => {
+            if(err){
+              res.statusCode = 500
+              useRes = err.message
+            } else {
+              if(data){
+                res.statusCode = 200
+                const ih = req.url.replace('/add/', '')
+                const testHash = crypto.createHash('sha1').update(ih + "'s").digest('hex')
+                const doesNotHaveRelay = !self.relays.includes(testHash)
+                const doesNotHaveHash = !self.hashes.includes(ih)
+                if(doesNotHaveRelay){
+                  self.relays.push(testHash)
+                  self.relay.lookup(testHash, (err, num) => {
+                    console.log(err, num)
+                  })
+                }
+                if(doesNotHaveHash){
+                  self.hashes.push(ih)
+                  self.relay.announce(ih, self.TRACKERPORT, (err) => {
+                    console.log(err)
+                  })
+                  self.sendTo[ih] = []
+                }
+                if(doesNotHaveRelay || doesNotHaveHash){
+                  fs.writeFile(path.join(self.dir, 'hashes'), JSON.stringify(self.hashes), {}, (err) => {
+                    if(err){
+                      console.error(err)
+                    } else {
+                      console.log('saved hashes')
+                    }
+                  })
+                  fs.writeFile(path.join(self.dir, 'relays'), JSON.stringify(self.relays), {}, (err) => {
+                    if(err){
+                      console.error(err)
+                    } else {
+                      console.log('saved relays')
+                    }
+                  })
+                  for(const testObj of self.trackers){
+                    self.trackers[testObj].send(JSON.stringify({action: 'add', relay: testHash, hash: ih}))
+                  }
+                }
+                useRes = 'successful'
+              } else {
+                res.statusCode = 400
+                useRes = 'unsuccessful'
+              }
+            }
+          })
+        }
+        req.onError = function(err){
+          res.statusCode = 400
+          useRes = err.message
+          req.destroy()
+        }
+        req.onClose = function(){
+          req.off('data', req.onData)
+          req.off('end', req.onEnd)
+          req.off('error', req.onError)
+          req.off('close', req.onClose)
+          res.end(useRes)
+        }
+        req.on('data', req.onData)
+        req.on('end', req.onEnd)
+        req.on('error', req.onError)
+        req.on('close', req.onClose)
+      } else if(this.auth && req.method === 'POST' && req.url.startsWith('/sub/')){
+        let useAuth = ''
+        let useRes
+        req.onData = function(data){
+          useAuth = useAuth + data.toString()
+        }
+        req.onError = function(err){
+          res.statusCode = 400
+          useRes = err.message
+          req.destroy()
+        }
+        req.onEnd = function(){
+          bcrypt.compare(useAuth, self.auth, (err, data) => {
+            if(err){
+              res.statusCode = 500
+              useRes = err.message
+            } else {
+              if(data){
+                res.statusCode = 200
+                const ih = req.url.replace('/sub/', '')
+                const testHash = crypto.createHash('sha1').update(ih + "'s").digest('hex')
+                const hasRelay = self.relays.includes(testHash)
+                const hasHash = self.hashes.includes(ih)
+                if(hasRelay){
+                  self.relay.splice(self.relays.indexOf(testHash), 1)
+                }
+                if(hasHash){
+                  self.hashes.splice(self.hashes.indexOf(ih), 1)
+                  delete self.sendTo[ih]
+                }
+                if(hasRelay || hasHash){
+                  fs.writeFile(path.join(self.dir, 'hashes'), JSON.stringify(self.hashes), {}, (err) => {
+                    if(err){
+                      console.error(err)
+                    } else {
+                      console.log('saved hashes')
+                    }
+                  })
+                  fs.writeFile(path.join(self.dir, 'relays'), JSON.stringify(self.relays), {}, (err) => {
+                    if(err){
+                      console.error(err)
+                    } else {
+                      console.log('saved relays')
+                    }
+                  })
+                  for(const testObj of self.trackers){
+                    if(self.trackers[testObj].relays.includes(testHash)){
+                      self.trackers[testObj].relays.splice(self.trackers[testObj].relays.indexOf(testHash), 1)
+                    }
+                    if(self.trackers[testObj].hashes.includes(ih)){
+                      self.trackers[testObj].hashes.splice(self.trackers[testObj].hashes.indexOf(ih), 1)
+                    }
+                    self.trackers[testObj].send(JSON.stringify({action: 'sub', relay: testHash, hash: ih}))
+                    if(!self.trackers[testObj].relays.length || !self.trackers[testObj].hashes.length){
+                      self.trackers[testObj].terminate()
+                    }
+                  }
+                }
+                useRes = 'successful'
+              } else {
+                res.statusCode = 400
+                useRes = 'unsuccessful'
+              }
+            }
+          })
+        }
+        req.onClose = function(){
+          req.off('data', req.onData)
+          req.off('error', req.onError)
+          req.off('end', req.onEnd)
+          req.off('close', req.onClose)
+          res.end(useRes)
+        }
+        req.on('data', req.onData)
+        req.on('error', req.onError)
+        req.on('end', req.onEnd)
+        req.on('close', req.onClose)
+      } else {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify('invalid method or path'))
       }
     }
     this.http.onClose = () => {
