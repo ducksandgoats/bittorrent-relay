@@ -39,11 +39,11 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Number}  opts.port     port used for server
  * @param {String}  opts.domain     domain name that will be used
  * @param {Boolean}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
- * @param {Boolean}  opts.auth     password to add infohashes
- * @param {Boolean}  opts.dir     directory to store config files
- * @param {Boolean}  opts.hashes     comma separated infohashes
- * @param {Boolean}  opts.handleProperty     add custom capabilities
- * @param {Boolean}  opts.handleMethod     handle custom routes
+ * @param {String}  opts.auth     password to add infohashes
+ * @param {String}  opts.dir     directory to store config files
+ * @param {String}  opts.hashes     comma separated infohashes
+ * @param {Function}  opts.extendRelay    have custom capabilities
+ * @param {Function}  opts.extendHandler     handle custom routes
  */
 
 class Server extends EventEmitter {
@@ -72,8 +72,8 @@ class Server extends EventEmitter {
         }
       })
     }
-    this.handleProperty = opts.handleProperty ? opts.handleProperty() : null
-    this.handleMethod = opts.handleMethod || null
+    this.extendRelay = opts.extendRelay ? opts.extendRelay() : null
+    this.extendHandler = opts.extendHandler || null
     
     this.intervalMs = opts.announceTimer
       ? opts.announceTimer
@@ -138,6 +138,7 @@ class Server extends EventEmitter {
     this.status = {cpu: 0, memory: 0, state: 1}
     this.trackers = {}
     this.sendTo = {}
+    this.triedAlready = {}
     this.hashes.forEach((data) => {this.sendTo[data] = []})
 
     // start a websocket tracker (for WebTorrent) unless the user explicitly says no
@@ -449,9 +450,9 @@ class Server extends EventEmitter {
         req.on('error', req.onError)
         req.on('end', req.onEnd)
         req.on('close', req.onClose)
-      } else if(this.handleMethod){
+      } else if(this.extendHandler){
         try {
-          this.handleFunc(req, this.handleProperty, res)
+          this.extendHandler(req, this.extendRelay, res)
         } catch (error) {
           res.statusCode = 400
           res.setHeader('Content-Type', 'application/json')
@@ -558,35 +559,32 @@ class Server extends EventEmitter {
       // if not connected, then connect socket
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
-      if(this.auth && !this.relays.includes(infoHash)){
-        return
-      }
+
       const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
       if(self.trackers[id] || self.id === id){
         return
-      } else {
-        const relay = `ws://${peer.host}:${peer.port}/relay/`
-        // const announce = `ws://${link}/announce/`
-        const con = new WebSocket(relay + self.id)
-        // con.relay = relay
-        // con.announce = announce
-        con.server = false
-        con.active = true
-        // con.link = link
-        con.relays = [infoHash]
-        con.hashes = []
-        con.id = id
-        // this.trackers[id] = con
-        self.onRelaySocketConnection(con)
       }
-      // finish the rest
-    })
-    // this.relay.on('announce', (peer, infoHash) => {
-    // // if not connected, then connect socket
-    // // share resource details on websocket
-    // })
 
-    // this.talkToRelay()
+      if(this.auth && !this.relays.includes(infoHash)){
+        return
+      }
+
+      if(this.triedAlready[id]){
+        const checkStamp =  (Date.now() - this.triedAlready[id].stamp) / 1000
+        if(this.triedAlready[id].wait >= checkStamp){
+          return
+        }
+      }
+
+      const relay = `ws://${peer.host}:${peer.port}/relay/`
+      const con = new WebSocket(relay + self.id)
+      con.server = false
+      con.active = true
+      con.relays = [infoHash]
+      con.hashes = []
+      con.id = id
+      self.onRelaySocketConnection(con)
+    })
 
     this.intervalRelay = setInterval(() => {
       if(this.http.listening){
@@ -745,9 +743,18 @@ class Server extends EventEmitter {
     }
     socket.onOpen = function(){
       // self.trackers[socket.id] = socket
+      if(self.triedAlready[socket.id]){
+        delete self.triedAlready[socket.id]
+      }
       socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
+      if(self.triedAlready[socket.id]){
+        self.triedAlready[socket.id].stamp = Date.now()
+        self.triedAlready[socket.id].wait++
+      } else {
+        self.triedAlready[socket.id] = {stamp: Date.now(), wait: 1}
+      }
       self.emit('error', 'ws', err)
       socket.terminate()
     }

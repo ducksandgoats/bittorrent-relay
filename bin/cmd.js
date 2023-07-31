@@ -38,7 +38,9 @@ const argv = minimist(process.argv.slice(2), {
     'trust-proxy': null,
     'auth': null,
     'dir': path.join(process.cwd(), 'dir'),
-    'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3'
+    'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3',
+    'extend-relay': null,
+    'extend-handler': null
   }
 })
 
@@ -95,7 +97,9 @@ const sever = new Server({
   dir: argv['dir'],
   host: argv['host'],
   port: argv['port'],
-  hashes: argv['hashes']
+  hashes: argv['hashes'],
+  extendRelay: argv['extend-relay'],
+  extendHandler: argv['extend-handler']
 })
 
 sever.on('listening', (which) => {
