@@ -62,15 +62,7 @@ class Server extends EventEmitter {
           self.auth = null
           self.emit('ev', 'auth had error, will not be able to change infohahes')
         } else if(hash){
-          fs.writeFile(path.join(this.dir, 'auth.txt'), hash, {}, (error) => {
-            if(error){
-              self.emit('error', 'ev', error)
-              self.auth = null
-              self.emit('ev', 'data had error, will not be able to change infohahes')
-            } else {
-              self.auth = hash
-            }
-          })
+          self.auth = hash
         } else {
           self.emit('error', 'ev', new Error('could not generate hash'))
           self.auth = null
