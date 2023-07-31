@@ -1,7 +1,7 @@
 {
   "name": "bittorrent-relay",
   "description": "Uses the mainline dht to relay requests to other trackers in a swarm",
-  "version": "7.0.1",
+  "version": "7.0.2",
   "bin": {
     "bittorrent-relay": "./bin/cmd.js"
   },

@@ -501,22 +501,25 @@ class Server extends EventEmitter {
             // send them tracker url that is usable then close the socket
             socket.send(JSON.stringify({action: 'relay', relay: self.sendTo[hash][Math.floor(Math.random() * self.sendTo[hash].length)]}))
             socket.terminate()
-          } else {
-            // use regular socket function from bittorrent-tracker
-            socket.upgradeReq = req
-            self.onWebSocketConnection(socket)
+            return
           }
+          // use regular socket function from bittorrent-tracker
+          socket.upgradeReq = req
+          self.onWebSocketConnection(socket)
         } else if(action === 'relay'){
+          if(this.triedAlready[hash]){
+            delete this.triedAlready[hash]
+          }
           if(self.trackers[hash]){
             socket.terminate()
-          } else {
-            socket.id = hash
-            socket.server = true
-            socket.active = true
-            socket.relays = []
-            socket.hashes = []
-            self.onRelaySocketConnection(socket)
+            return
           }
+          socket.id = hash
+          socket.server = true
+          socket.active = true
+          socket.relays = []
+          socket.hashes = []
+          self.onRelaySocketConnection(socket)
         } else {
           throw new Error('invalid path')
         }
