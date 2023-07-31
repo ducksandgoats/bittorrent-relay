@@ -760,6 +760,7 @@ class Server extends EventEmitter {
       } else {
         self.triedAlready[socket.id] = {stamp: Date.now(), wait: 1}
       }
+      self.emit('ev', socket.id + ' had an error, will wait and try to connect later')
       self.emit('error', 'ws', err)
       socket.terminate()
     }
