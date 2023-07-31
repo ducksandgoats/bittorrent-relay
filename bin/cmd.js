@@ -83,7 +83,7 @@ if(!fs.existsSync(argv['dir'])){
   fs.mkdirSync(argv['dir'], {recursive: true})
 }
 
-const sever = new Server({
+const server = new Server({
   announceTimer: argv['announce-timer'],
   relayTimer: argv['relay-timer'],
   timer: argv['timer'],
@@ -102,18 +102,22 @@ const sever = new Server({
   extendHandler: argv['extend-handler']
 })
 
-sever.on('listening', (which) => {
+server.on('listening', (which) => {
   console.log('listening', which)
 })
 
-sever.on('error', (which, err) => {
+server.on('ev', (e) => {
+  console.log(e)
+})
+
+server.on('error', (which, err) => {
   console.error('close', which, err)
 })
 
-sever.on('close', (which) => {
+server.on('close', (which) => {
   console.log('close', which)
 })
 
-sever.turnOn(() => {
+server.turnOn(() => {
   console.log('turned on')
 })
