@@ -41,7 +41,7 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {Boolean}  opts.trustProxy     trust 'x-forwarded-for' header from reverse proxy
  * @param {String}  opts.auth     password to add infohashes
  * @param {String}  opts.dir     directory to store config files
- * @param {String}  opts.hashes     comma separated infohashes
+ * @param {Array}  opts.hashes     infohashes to use
  * @param {Function}  opts.extendRelay    have custom capabilities
  * @param {Function}  opts.extendHandler     handle custom routes
  */
@@ -58,17 +58,23 @@ class Server extends EventEmitter {
     if(this.auth){
       bcrypt.hash(opts.auth, 10, function(err, hash) {
         if(err){
-          throw err
+          self.emit('error', 'ev', err)
+          self.auth = null
+          self.emit('ev', 'auth had error, will not be able to change infohahes')
         } else if(hash){
           fs.writeFile(path.join(this.dir, 'auth.txt'), hash, {}, (error) => {
             if(error){
-              throw error
+              self.emit('error', 'ev', error)
+              self.auth = null
+              self.emit('ev', 'data had error, will not be able to change infohahes')
             } else {
               self.auth = hash
             }
           })
         } else {
-          throw new Error('could not generate hash')
+          self.emit('error', 'ev', new Error('could not generate hash'))
+          self.auth = null
+          self.emit('ev', 'did not have error but also did not have auth, will not be able to change infohahes')
         }
       })
     }
@@ -101,10 +107,7 @@ class Server extends EventEmitter {
       throw new Error('must have host')
     }
     this.port = opts.port || this.TRACKERPORT
-    this.hashes = opts.hashes ? opts.hashes.split(',').filter(Boolean) : []
-    if(!this.hashes.length){
-      throw new Error('hashes can not be empty')
-    }
+    this.hashes = Array.isArray(opts.hashes) ? opts.hashes : []
     fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
       if(err){
         this.emit('error', 'ev', err)

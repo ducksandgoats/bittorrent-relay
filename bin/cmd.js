@@ -97,7 +97,7 @@ const server = new Server({
   dir: argv['dir'],
   host: argv['host'],
   port: argv['port'],
-  hashes: argv['hashes'],
+  hashes: argv['hashes'].split(',').filter(Boolean),
   extendRelay: argv['extend-relay'],
   extendHandler: argv['extend-handler']
 })
