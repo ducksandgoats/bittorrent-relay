@@ -497,31 +497,35 @@ class Server extends EventEmitter {
         const action = req.url.slice(0, req.url.lastIndexOf('/')).slice(1)
         const hash = req.url.slice(req.url.lastIndexOf('/')).slice(1)
         if(action === 'announce'){
+
           if(self.status.state !== 1 && self.sendTo[hash] && self.sendTo[hash].length){
-            // send them tracker url that is usable then close the socket
             socket.send(JSON.stringify({action: 'relay', relay: self.sendTo[hash][Math.floor(Math.random() * self.sendTo[hash].length)]}))
             socket.terminate()
-            return
+          } else {
+            socket.upgradeReq = req
+            self.onWebSocketConnection(socket)
           }
-          // use regular socket function from bittorrent-tracker
-          socket.upgradeReq = req
-          self.onWebSocketConnection(socket)
+
         } else if(action === 'relay'){
+
           if(this.triedAlready[hash]){
             delete this.triedAlready[hash]
           }
           if(self.trackers[hash]){
             socket.terminate()
-            return
+          } else {
+            socket.id = hash
+            socket.server = true
+            socket.active = true
+            socket.relays = []
+            socket.hashes = []
+            self.onRelaySocketConnection(socket)
           }
-          socket.id = hash
-          socket.server = true
-          socket.active = true
-          socket.relays = []
-          socket.hashes = []
-          self.onRelaySocketConnection(socket)
+
         } else {
+
           throw new Error('invalid path')
+
         }
       } catch (error) {
         socket.send(JSON.stringify({action: 'failure reason', error: error.message}))
