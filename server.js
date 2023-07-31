@@ -107,17 +107,17 @@ class Server extends EventEmitter {
     }
     fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
       if(err){
-        console.error(err)
+        this.emit('error', 'ev', err)
       } else {
-        console.log('saved hashes')
+        this.emit('ev', 'saved hashes')
       }
     })
     this.relays = this.hashes.map((data) => {return crypto.createHash('sha1').update(data + "'s").digest('hex')})
     fs.writeFile(path.join(this.dir, 'relays'), JSON.stringify(this.relays), {}, (err) => {
       if(err){
-        console.error(err)
+        this.emit('error', 'ev', err)
       } else {
-        console.log('saved relays')
+        this.emit('ev', 'saved relays')
       }
     })
     // this._trustProxy = !!opts.trustProxy
@@ -320,29 +320,37 @@ class Server extends EventEmitter {
                 if(doesNotHaveRelay){
                   self.relays.push(testHash)
                   self.relay.lookup(testHash, (err, num) => {
-                    console.log(err, num)
+                    if(err){
+                      self.emit('error', 'ev', err)
+                    } else {
+                      self.emit('ev', num)
+                    }
                   })
                 }
                 if(doesNotHaveHash){
                   self.hashes.push(ih)
                   self.relay.announce(ih, self.TRACKERPORT, (err) => {
-                    console.log(err)
+                    if(err){
+                      self.emit('error', 'ev', err)
+                    } else {
+                      self.emit('ev', 'announced ' + ih)
+                    }
                   })
                   self.sendTo[ih] = []
                 }
                 if(doesNotHaveRelay || doesNotHaveHash){
                   fs.writeFile(path.join(self.dir, 'hashes'), JSON.stringify(self.hashes), {}, (err) => {
                     if(err){
-                      console.error(err)
+                      self.emit('error', 'ev', err)
                     } else {
-                      console.log('saved hashes')
+                      self.emit('ev', 'saved hashes')
                     }
                   })
                   fs.writeFile(path.join(self.dir, 'relays'), JSON.stringify(self.relays), {}, (err) => {
                     if(err){
-                      console.error(err)
+                      self.emit('error', 'ev', err)
                     } else {
-                      console.log('saved relays')
+                      self.emit('ev', 'saved relays')
                     }
                   })
                   for(const testObj of self.trackers){
@@ -406,16 +414,16 @@ class Server extends EventEmitter {
                 if(hasRelay || hasHash){
                   fs.writeFile(path.join(self.dir, 'hashes'), JSON.stringify(self.hashes), {}, (err) => {
                     if(err){
-                      console.error(err)
+                      self.emit('error', 'ev', err)
                     } else {
-                      console.log('saved hashes')
+                      self.emit('ev', 'saved hashes')
                     }
                   })
                   fs.writeFile(path.join(self.dir, 'relays'), JSON.stringify(self.relays), {}, (err) => {
                     if(err){
-                      console.error(err)
+                      self.emit('error', 'ev', err)
                     } else {
-                      console.log('saved relays')
+                      self.emit('ev', 'saved relays')
                     }
                   })
                   for(const testObj of self.trackers){
@@ -609,10 +617,18 @@ class Server extends EventEmitter {
   talkToRelay(){
     for(const test of this.relays){
       this.relay.lookup(test, (err, num) => {
-          console.log(err, num)
+        if(err){
+          this.emit('error', 'ev', err)
+        } else {
+          this.emit('ev', num)
+        }
       })
       this.relay.announce(test, this.TRACKERPORT, (err) => {
-          console.log(err)
+        if(err){
+          this.emit('error', 'ev', err)
+        } else {
+          this.emit('ev', 'announced ' + test)
+        }
       })
     }
   }
@@ -735,12 +751,6 @@ class Server extends EventEmitter {
   onRelaySocketConnection(socket){
     // if id sent from messages exists already in this.trackers then close the socket
     const self = this
-    socket.takeOff = function(){
-      socket.off('open', socket.onOpen)
-      socket.off('error', socket.onError)
-      socket.off('message', socket.onMessage)
-      socket.off('close', socket.onClose)
-    }
     socket.onOpen = function(){
       // self.trackers[socket.id] = socket
       if(self.triedAlready[socket.id]){
@@ -885,15 +895,20 @@ class Server extends EventEmitter {
       }
     }
     socket.onClose = function(code, reason){
-      socket.takeOff()
+      socket.off('open', socket.onOpen)
+      socket.off('error', socket.onError)
+      socket.off('message', socket.onMessage)
+      socket.off('close', socket.onClose)
+
       for(const testHash of socket.hashes){
         const useLink = socket.announce + '/' + testHash
         if(self.sendTo[testHash].includes(useLink)){
           self.sendTo[testHash].splice(self.sendTo[testHash].indexOf(useLink), 1)
         }
       }
+
       delete self.trackers[socket.id]
-      console.log(code, reason.toString('utf-8'))
+      self.emit('ev', {code, reason: reason.toString()})
     }
     socket.on('open', socket.onOpen)
     socket.on('error', socket.onError)
