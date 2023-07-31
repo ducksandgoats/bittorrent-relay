@@ -763,7 +763,7 @@ class Server extends EventEmitter {
     socket.onError = function(err){
       if(self.triedAlready[socket.id]){
         self.triedAlready[socket.id].stamp = Date.now()
-        self.triedAlready[socket.id].wait++
+        self.triedAlready[socket.id].wait = self.triedAlready[socket.id].wait * 2
       } else {
         self.triedAlready[socket.id] = {stamp: Date.now(), wait: 1}
       }
