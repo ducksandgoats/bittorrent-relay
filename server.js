@@ -75,7 +75,7 @@ class Server extends EventEmitter {
     if(this.key){
       this.key = crypto.createHash('sha1').update(this.key).digest('hex')
     } else {
-      crypto.generateKeyPair('rsa', {}, (error, pub, pri) => {
+      crypto.generateKeyPair('rsa', {modulusLength: 2048}, (error, pub, pri) => {
         if(error){
           this.key = null
           self.emit('error', 'ev', error)
