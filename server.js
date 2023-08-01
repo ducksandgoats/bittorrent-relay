@@ -80,7 +80,7 @@ class Server extends EventEmitter {
           this.key = null
           self.emit('error', 'ev', error)
         } else {
-          const test = {pub: pub.export().toString('hex'), pri: pri.export().toString('hex')}
+          const test = {pub: pub.export({}).toString('hex'), pri: pri.export({}).toString('hex')}
           this.key = crypto.createHash('sha1').update(test.pub).digest('hex')
           self.emit('ev', test)
         }
