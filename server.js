@@ -298,16 +298,18 @@ class Server extends EventEmitter {
           `.replace(/^\s+/gm, '')) // trim left
         }
       } else if(req.method === 'GET' && req.url === '/addresses'){
+        const arr = []
+        for(const i in self.trackers){
+          arr.push(self.trackers[i].address)
+        }
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify(arr))
+      } else if(req.method === 'GET' && req.url === '/ids'){
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify(Object.keys(self.trackers)))
       } else if(req.method === 'GET' && req.url === '/hashes'){
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify(self.hashes))
-      } else if(req.method === 'GET' && req.url.startsWith('/i/')){
-        const test = req.url.replace('/i/', '')
-        res.setHeader('Content-Type', 'application/json')
-        // res.end(self.sendTo[test] ? JSON.stringify(self.sendTo[test]) : JSON.stringify([]))
-        res.end(JSON.stringify(self.sendTo[test]))
       } else if(req.method === 'GET' && req.url === '/keys'){
         const arr = []
         for(const i in self.trackers){
