@@ -42,6 +42,7 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {String}  opts.auth     password to add infohashes
  * @param {String}  opts.dir     directory to store config files
  * @param {Array}  opts.hashes     infohashes to use
+ * @param {String}  opts.key    use a public key
  * @param {Function}  opts.extendRelay    have custom capabilities
  * @param {Function}  opts.extendHandler     handle custom routes
  */
@@ -55,6 +56,7 @@ class Server extends EventEmitter {
 
     this.dir = opts.dir || __dirname
     this.auth = opts.auth || null
+    this.key = opts.key || null
     if(this.auth){
       bcrypt.hash(opts.auth, 10, function(err, hash) {
         if(err){
@@ -67,6 +69,20 @@ class Server extends EventEmitter {
           self.emit('error', 'ev', new Error('could not generate hash'))
           self.auth = null
           self.emit('ev', 'did not have error but also did not have auth, will not be able to change infohahes')
+        }
+      })
+    }
+    if(this.key){
+      this.key = crypto.createHash('sha1').update(this.key).digest('hex')
+    } else {
+      crypto.generateKeyPair('rsa', {}, (error, pub, pri) => {
+        if(error){
+          this.key = null
+          self.emit('error', 'ev', error)
+        } else {
+          const test = {pub: pub.toString('hex'), pri: pri.toString('hex')}
+          this.key = crypto.createHash('sha1').update(test.pub).digest('hex')
+          self.emit('ev', test)
         }
       })
     }
@@ -99,6 +115,7 @@ class Server extends EventEmitter {
       throw new Error('must have host')
     }
     this.port = opts.port || this.TRACKERPORT
+    this.address = `${this.host}:${this.port}`
     this.hashes = Array.isArray(opts.hashes) ? opts.hashes : []
     fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
       if(err){
@@ -280,17 +297,24 @@ class Server extends EventEmitter {
             ${printClients(stats.clients)}
           `.replace(/^\s+/gm, '')) // trim left
         }
-      } else if(req.method === 'GET' && req.url === '/h'){
+      } else if(req.method === 'GET' && req.url === '/addresses'){
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify(Object.keys(self.trackers)))
+      } else if(req.method === 'GET' && req.url === '/hashes'){
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify(self.hashes))
-      } else if(req.method === 'GET' && req.url === '/l'){
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(self.sendTo))
       } else if(req.method === 'GET' && req.url.startsWith('/i/')){
         const test = req.url.replace('/i/', '')
         res.setHeader('Content-Type', 'application/json')
         // res.end(self.sendTo[test] ? JSON.stringify(self.sendTo[test]) : JSON.stringify([]))
         res.end(JSON.stringify(self.sendTo[test]))
+      } else if(req.method === 'GET' && req.url === '/keys'){
+        const arr = []
+        for(const i in self.trackers){
+          arr.push(self.trackers[i].key)
+        }
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify(arr))
       } else if(req.method === 'GET' && req.url === '/zed'){
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify('thanks for using bittorrent-relay'))
@@ -758,7 +782,7 @@ class Server extends EventEmitter {
       if(self.triedAlready[socket.id]){
         delete self.triedAlready[socket.id]
       }
-      socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+      socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
       if(self.triedAlready[socket.id]){
@@ -780,12 +804,14 @@ class Server extends EventEmitter {
         }
         self.trackers[socket.id] = socket
         socket.id = message.id
+        socket.key = message.key
         socket.domain = message.domain
         socket.tracker = message.tracker
         socket.port = message.port
         socket.host = message.host
         socket.web = message.web
         socket.dht = message.dht
+        socket.address = message.address
         socket.relay = message.web + '/relay'
         socket.announce = message.web + '/announce'
         for(const messageRelay of message.relays){
@@ -807,7 +833,7 @@ class Server extends EventEmitter {
           return
         }
         if(socket.server){
-          socket.send(JSON.stringify({id: self.id, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
         }
       }
       if(message.action === 'web'){
