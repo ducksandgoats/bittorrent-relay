@@ -15,6 +15,7 @@ import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import fs from 'fs'
 import path from 'path'
+import ed from 'ed25519-supercop'
 // import {nanoid} from 'nanoid'
 
 const debug = Debug('bittorrent-tracker:server')
@@ -75,16 +76,11 @@ class Server extends EventEmitter {
     if(this.key){
       this.key = crypto.createHash('sha1').update(this.key).digest('hex')
     } else {
-      crypto.generateKeyPair('rsa', {modulusLength: 2048}, (error, pub, pri) => {
-        if(error){
-          this.key = null
-          self.emit('error', 'ev', error)
-        } else {
-          const test = {pub: pub.export({type: 'pkcs1', format: 'pem'}).toString('hex'), pri: pri.export({type: 'pkcs1', format: 'pem'}).toString('hex')}
-          this.key = crypto.createHash('sha1').update(test.pub).digest('hex')
-          self.emit('ev', test)
-        }
-      })
+      const test = ed.createSeed()
+      const check = ed.createKeyPair(test)
+      const useData = {seed: test.toString('hex'), publicKey: check.publicKey.toString('hex'), private: check.secretKey.toString('hex')}
+      this.key = crypto.createHash('sha1').update(useData.publicKey).digest('hex')
+      self.emit('ev', useData)
     }
     this.extendRelay = opts.extendRelay ? opts.extendRelay() : null
     this.extendHandler = opts.extendHandler || null

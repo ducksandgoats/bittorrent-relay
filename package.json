@@ -1,7 +1,7 @@
 {
   "name": "bittorrent-relay",
   "description": "Uses the mainline dht to relay requests to other trackers in a swarm",
-  "version": "8.0.0",
+  "version": "8.0.1",
   "bin": {
     "bittorrent-relay": "./bin/cmd.js"
   },
@@ -17,6 +17,7 @@
     "clone": "^2.0.0",
     "compact2string": "^1.4.1",
     "debug": "^4.1.1",
+    "ed25519-supercop": "^2.0.1",
     "express": "^4.18.2",
     "ip": "^1.1.5",
     "lru": "^3.1.0",
