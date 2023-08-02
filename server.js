@@ -111,7 +111,8 @@ class Server extends EventEmitter {
       throw new Error('must have host')
     }
     this.port = opts.port || this.TRACKERPORT
-    this.address = `${this.host}:${this.port}`
+    this.hostPort = `${this.host}:${this.port}`
+    this.address = crypto.createHash('sha1').update(this.hostPort).digest('hex')
     this.hashes = Array.isArray(opts.hashes) ? opts.hashes : []
     fs.writeFile(path.join(this.dir, 'hashes'), JSON.stringify(this.hashes), {}, (err) => {
       if(err){
@@ -780,7 +781,7 @@ class Server extends EventEmitter {
       if(self.triedAlready[socket.id]){
         delete self.triedAlready[socket.id]
       }
-      socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+      socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
     }
     socket.onError = function(err){
       if(self.triedAlready[socket.id]){
@@ -810,6 +811,7 @@ class Server extends EventEmitter {
         socket.web = message.web
         socket.dht = message.dht
         socket.address = message.address
+        socket.hostPort = message.hostPort
         socket.relay = message.web + '/relay'
         socket.announce = message.web + '/announce'
         for(const messageRelay of message.relays){
@@ -831,7 +833,7 @@ class Server extends EventEmitter {
           return
         }
         if(socket.server){
-          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
+          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: self.relays, hashes: self.hashes, action: 'session'}))
         }
       }
       if(message.action === 'web'){
