@@ -1031,7 +1031,8 @@ class Server extends EventEmitter {
             offer: params.offers[i].offer,
             offer_id: params.offers[i].offer_id,
             peer_id: hex2bin(params.peer_id),
-            info_hash: hex2bin(params.info_hash)
+            info_hash: hex2bin(params.info_hash),
+            public_key: params.public_key
           }), peer.socket.onSend)
           debug('sent offer to %s from %s', peer.peerId, params.peer_id)
         })
@@ -1064,7 +1065,8 @@ class Server extends EventEmitter {
             answer: params.answer,
             offer_id: params.offer_id,
             peer_id: hex2bin(params.peer_id),
-            info_hash: hex2bin(params.info_hash)
+            info_hash: hex2bin(params.info_hash),
+            public_key: params.public_key
           }), toPeer.socket.onSend)
           debug('sent answer to %s from %s', toPeer.peerId, params.peer_id)
 
