@@ -1,5 +1,4 @@
 import { bin2hex } from 'uint8-util'
-import crypto from 'crypto'
 
 import common from '../lib/common.js'
 
@@ -21,12 +20,6 @@ export default function (socket, opts, params) {
       throw new Error('invalid peer_id')
     }
     params.peer_id = bin2hex(params.peer_id)
-
-    if(params.public_key){
-      if(crypto.createHash('sha1').update(params.public_key).digest('hex') !== params.peer_id){
-        throw new Error('public_key must be SHA1 hash of peer_id')
-      }
-    }
 
     if (params.answer) {
       if (typeof params.to_peer_id !== 'string' || params.to_peer_id.length !== 20) {
