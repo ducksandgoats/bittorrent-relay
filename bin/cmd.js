@@ -23,7 +23,8 @@ const argv = minimist(process.argv.slice(2), {
     'tracker-host',
     'host',
     'hashes',
-    'key'
+    'key',
+    'index'
   ],
   default: {
     'dht-port': 16881,
@@ -42,7 +43,8 @@ const argv = minimist(process.argv.slice(2), {
     'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3',
     'extend-relay': null,
     'extend-handler': null,
-    'key': null
+    'key': null,
+    'index': null
   }
 })
 
@@ -102,7 +104,8 @@ const server = new Server({
   hashes: argv['hashes'].split(',').filter(Boolean),
   extendRelay: argv['extend-relay'],
   extendHandler: argv['extend-handler'],
-  key: argv['key']
+  key: argv['key'],
+  index: argv['index']
 })
 
 server.on('listening', (which) => {

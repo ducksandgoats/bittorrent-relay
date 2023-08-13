@@ -14,7 +14,7 @@ import parseWebSocketRequest from './server/parse-websocket.js'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import fs from 'fs'
-import path from 'path'
+import path, { join } from 'path'
 import ed from 'ed25519-supercop'
 // import {nanoid} from 'nanoid'
 
@@ -44,9 +44,11 @@ const hasOwnProperty = Object.prototype.hasOwnProperty
  * @param {String}  opts.dir     directory to store config files
  * @param {Array}  opts.hashes     infohashes to use
  * @param {String}  opts.key    use a public key
- * @param {Function}  opts.extendRelay    have custom capabilities
- * @param {Function}  opts.extendHandler     handle custom routes
+ * @param {Boolean|String}  opts.index    serve an html file when the request is to /
  */
+
+// * @param {Function}  opts.extendRelay    have custom capabilities
+// * @param {Function}  opts.extendHandler     handle custom routes
 
 class Server extends EventEmitter {
   constructor (opts = {}) {
@@ -55,7 +57,37 @@ class Server extends EventEmitter {
 
     const self = this
 
+    this.index = opts.index
     this.dir = opts.dir || __dirname
+    if(this.index){
+      if(this.index === true){
+        if(!fs.existsSync(path.join(this.dir, 'index.html'))){
+          fs.writeFileSync(path.join(this.dir, 'index.html'), '<html><head><title>Relay</title></head><body><h1>Relay</h1><p>Relay</p></body></html>')
+        }
+      } else {
+        const useIndex = this.index
+        this.index = true
+        try {
+          const htmlFile = path.extname(useIndex) === '.html' ? true : false
+          if(htmlFile){
+            fs.copyFileSync(useIndex, path.join(this.dir, 'index.html'))
+          } else {
+            fs.writeFileSync(path.join(this.dir, 'index.html'), '<html><head><title>Relay</title></head><body>' + fs.readFileSync(useIndex).toString() + '</body></html>')
+          }
+        } catch (error) {
+          console.error(error)
+          if(!fs.existsSync(path.join(this.dir, 'index.html'))){
+            fs.writeFileSync(path.join(this.dir, 'index.html'), '<html><head><title>Relay</title></head><body><h1>Relay</h1><p>Relay</p></body></html>')
+          }
+        }
+      }
+    } else {
+      if(this.index === false){
+        if(fs.existsSync(path.join(this.dir, 'index.html'))){
+          fs.rmSync(path.join(this.dir, 'index.html'))
+        }
+      }
+    }
     this.auth = opts.auth || null
     this.key = opts.key || null
     if(this.auth){
@@ -82,8 +114,8 @@ class Server extends EventEmitter {
       this.key = crypto.createHash('sha1').update(useData.publicKey).digest('hex')
       self.emit('ev', useData)
     }
-    this.extendRelay = opts.extendRelay ? opts.extendRelay() : null
-    this.extendHandler = opts.extendHandler || null
+    // this.extendRelay = opts.extendRelay ? opts.extendRelay() : null
+    // this.extendHandler = opts.extendHandler || null
     
     this.intervalMs = opts.announceTimer
       ? opts.announceTimer
@@ -222,7 +254,11 @@ class Server extends EventEmitter {
         return html
       }
   
-      if(req.method === 'GET' && (req.url === '/stats' || req.url === '/stats.json')){
+      if((req.url === '/' || req.url === '/index.html') && req.method === 'GET' && this.index){
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'text/html')
+        fs.createReadStream(path.join(this.dir, 'index.html')).pipe(res)
+      } else if((req.url === '/stats' || req.url === '/stats.json') && req.method === 'GET'){
         infoHashes.forEach(infoHash => {
           const peers = self.torrents[infoHash].peers
           const keys = peers.keys
@@ -476,19 +512,20 @@ class Server extends EventEmitter {
         req.on('error', req.onError)
         req.on('end', req.onEnd)
         req.on('close', req.onClose)
-      } else if(this.extendHandler){
-        try {
-          this.extendHandler(req, this.extendRelay, res)
-        } catch (error) {
-          res.statusCode = 400
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(error.message))
-        }
       } else {
         res.statusCode = 400
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify('invalid method or path'))
       }
+      // if(this.extendHandler){
+      //   try {
+      //     this.extendHandler(req, this.extendRelay, res)
+      //   } catch (error) {
+      //     res.statusCode = 400
+      //     res.setHeader('Content-Type', 'application/json')
+      //     res.end(JSON.stringify(error.message))
+      //   }
+      // }
     }
     this.http.onClose = () => {
       self.emit('close', 'http')
