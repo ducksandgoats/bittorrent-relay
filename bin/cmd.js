@@ -41,8 +41,6 @@ const argv = minimist(process.argv.slice(2), {
     'auth': null,
     'dir': path.join(process.cwd(), 'dir'),
     'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3',
-    'extend-relay': null,
-    'extend-handler': null,
     'key': null,
     'index': null
   }
@@ -102,8 +100,6 @@ const server = new Server({
   host: argv['host'],
   port: argv['port'],
   hashes: argv['hashes'].split(',').filter(Boolean),
-  extendRelay: argv['extend-relay'],
-  extendHandler: argv['extend-handler'],
   key: argv['key'],
   index: argv['index']
 })
