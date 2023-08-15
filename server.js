@@ -14,12 +14,14 @@ import parseWebSocketRequest from './server/parse-websocket.js'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import fs from 'fs'
-import path, { join } from 'path'
+import path from 'path'
 import ed from 'ed25519-supercop'
-// import {nanoid} from 'nanoid'
+import url from 'url'
 
 const debug = Debug('bittorrent-tracker:server')
 const hasOwnProperty = Object.prototype.hasOwnProperty
+const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
+// const __filename = url.fileURLToPath(import.meta.url)
 
 /**
  * BitTorrent tracker server.
