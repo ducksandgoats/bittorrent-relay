@@ -15,3 +15,9 @@ how it works
 to-do
 1. finish and improve ways nodes can share system usage data
 2. complete the feature to enable users to add other services like gundb
+
+we use the following
+[bittorrent-dht](https://github.com/webtorrent/bittorrent-dht) - gives us the ability to connect to other nodes in a distributed (non-centralized) way
+[bittorrent-tracker](https://github.com/webtorrent/bittorrent-tracker) - this repo is based on bittorent-tracker (we made changes to it)
+
+TLDR: Instead of using 1 centralized tracker, we connect multiple trackers into a swarm, that way we can use other trackers in case 1 tracker is out of service.
