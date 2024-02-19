@@ -31,8 +31,7 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  *
  * @param {Object}  opts                options object
  * @param {Number}  opts.announceTimer       tell clients to announce on this interval (ms)
- * @param {Number}  opts.relayTimer       interval to find and connect to other trackers (ms)
- * @param {Number}  opts.timer       interval for general things like checking for active and inactive connections (ms)
+ * @param {Object}  opts.timer       interval for general things like checking for active and inactive connections (ms)
  * @param {Number}  opts.dhtPort      port used for the dht
  * @param {Number}  opts.trackerPort     port used for the tracker
  * @param {Number}  opts.dhtHost      port used for the dht
@@ -46,8 +45,7 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  * @param {Array|String}  opts.hashes     join the relays for these hashes, array of hashes or comma separated string of hashes
  * @param {Object|Boolean}  opts.user    user data like public key and private key
  * @param {Boolean} opts.stats          enable web-based statistics?
- * @param {Number} opts.serverConnectionLimit       limit the number of connections for each relay
- * @param {Number} opts.clientConnectionLimit       limit the number of connections for all hashes
+ * @param {Object} opts.limit       limit the connections of the relay and the hashes
  * @param {Boolean} opts.data      enable routes to share internal data to users
  * @param {Boolean} opts.status          accept only the hashes from the hashes array in the hashes option
  * @param {Boolean|String}  opts.index    serve an html file when the request is to /
@@ -55,6 +53,7 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
 
 // * @param {Function}  opts.extendRelay    have custom capabilities
 // * @param {Function}  opts.extendHandler     handle custom routes
+// * @param {Number}  opts.relayTimer       interval to find and connect to other trackers (ms)
 
 class Server extends EventEmitter {
   constructor (opts = {}) {
@@ -64,9 +63,15 @@ class Server extends EventEmitter {
     const self = this
     
     this.stats = opts.stats
-    this.limit = opts.limit
-    this.serverConnectionLimit = opts.serverConnectionLimit
-    this.clientConnectionLimit = opts.clientConnectionLimit
+    this.data = opts.data
+    this.limit = typeof(opts.limit) === 'object' && !Array.isArray(opts.limit) ? opts.limit : {}
+    this.timer = typeof(opts.timer) === 'object' && !Array.isArray(opts.timer) ? opts.timer : {}
+    this.serverConnections = opts.limit.serverConnections || 0
+    this.clientConnections = opts.limit.clientConnections || 0
+    this.refreshConnections = this.clientConnections ? this.clientConnections + (opts.limit.refresh ? opts.limit.refreshConnections || 1000 : 1000) : 0
+    this.refreshLimit = opts.limit.refreshLimit || 0
+    this.clientOrRefresh = Boolean(opts.limit.clientOrRefresh)
+    this.activity = opts.timer.activity || 5 * 60 * 1000
 
     this.dir = path.join(opts.dir || __dirname, 'dir')
     this.index = opts.index
@@ -136,8 +141,8 @@ class Server extends EventEmitter {
     this.http = null
     this.ws = null
     this.domain = opts.domain || null
-    this.timer = opts.timer || 1 * 60 * 1000
-    this.relayTimer = opts.relayTimer ? opts.relayTimer : 5 * 60 * 1000
+    this.inactive = opts.timer.inactive || 1 * 60 * 1000
+    this.active = opts.timer.active || 5 * 60 * 1000
     this.DHTPORT = opts.dhtPort || 16881
     this.TRACKERPORT = opts.trackerPort || 16969
     this.DHTHOST = opts.dhtHost || '0.0.0.0'
@@ -186,6 +191,19 @@ class Server extends EventEmitter {
       //     socket.send(JSON.stringify({action: 'web', tracker: self.tracker, dht: self.dht, domain: self.domain, host: self.host, port: self.port, web: self.web, id: self.id}))
       //   }
       // }
+      if(self.refreshConnections){
+        if(self.refresh){
+          clearInterval(self.refresh)
+        }
+        self.refresh = setInterval(() => {
+          if(self.refreshConnections){
+            if(self.ws.clients.size >= self.refreshConnections){
+              self.http.close()
+            }
+          }
+        }, this.activity)
+      }
+
       self.talkToRelay()
       self.emit('listening', 'http')
     }
@@ -551,6 +569,25 @@ class Server extends EventEmitter {
       this.hashes.forEach((data) => {
         this.relays.set(crypto.createHash('sha1').update(data).digest('hex'), [])
       })
+
+      if(self.refreshConnections){
+        if(self.refresh){
+          clearInterval(self.refresh)
+        }
+        self.refresh = setInterval(() => {
+          const check = self.clientOrRefresh ? self.refreshConnections : self.clientConnections
+          if(self.ws.clients.size <= check){
+            if(self.refreshLimit){
+              if(self.ws.clients.size <= self.refreshLimit){
+                self.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+              }
+            } else {
+              self.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+            }
+          }
+        }, this.activity)
+      }
+
       self.emit('close', 'http')
     }
 
@@ -582,7 +619,11 @@ class Server extends EventEmitter {
         // const relay = crypto.createHash('sha1').update(hash).digest('hex')
         if(action === 'announce'){
 
-          if(self.clientConnectionLimit && self.ws.clients.size >= self.clientConnectionLimit){
+          if(self.refreshConnections && self.ws.clients.size >= self.refreshConnections){
+            socket.send(JSON.stringify({action: 'failure reason', error: 'at limit, restarting tracker'}))
+            socket.close()
+            this.http.close()
+          } else if(self.clientConnections && self.ws.clients.size >= self.clientConnections){
             let sendData
             if(self.hashes.has(hash)){
               const relay = crypto.createHash('sha1').update(hash).digest('hex')
@@ -609,7 +650,7 @@ class Server extends EventEmitter {
           //   this.triedAlready.delete(hash)
           // }
           if(self.relays.has(hash)){
-            if(self.serverConnectionLimit && self.relays.get(hash).length >= self.serverConnectionLimit ){
+            if(self.serverConnections && self.relays.get(hash).length >= self.serverConnections ){
               socket.close()
             } else {
               socket.id = null
@@ -682,7 +723,7 @@ class Server extends EventEmitter {
         return
       }
 
-      if(this.serverConnectionLimit && this.relays.get(infoHash).length >= this.serverConnectionLimit){
+      if(this.serverConnections && this.relays.get(infoHash).length >= this.serverConnections){
         return
       }
 
@@ -720,7 +761,7 @@ class Server extends EventEmitter {
 
     this.intervalRelay = setInterval(() => {
       this.talkToRelay()
-    }, this.relayTimer)
+    }, this.active)
 
     this.intervalActive = setInterval(() => {
       for(const test in this.trackers.values()){
@@ -731,7 +772,7 @@ class Server extends EventEmitter {
         test.active = false
         test.send(JSON.stringify({action: 'ping'}))
       }
-    }, this.timer)
+    }, this.inactive)
 
     this.talkToRelay()
   }
@@ -769,7 +810,7 @@ class Server extends EventEmitter {
 
   talkToRelay(){
     for(const test of this.relays.keys()){
-      if(this.serverConnectionLimit && this.relays.get(test).length >= this.serverConnectionLimit){
+      if(this.serverConnections && this.relays.get(test).length >= this.serverConnections){
         continue
       } else {
         this.relay.lookup(test, (err, num) => {
@@ -790,7 +831,7 @@ class Server extends EventEmitter {
     }
   }
 
-  turnOn(cb = null){
+  listens(cb = null){
     this.relay.listen(this.DHTPORT, this.DHTHOST)
     this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
     if(cb){
@@ -798,14 +839,14 @@ class Server extends EventEmitter {
     }
   }
 
-  turnOff(cb = null){
-    // this.ws.close()
-    this.relay.destroy()
-    this.http.close()
-    if(cb){
-      cb()
-    }
-  }
+  // turnOff(cb = null){
+  //   // this.ws.close()
+  //   this.relay.destroy()
+  //   this.http.close()
+  //   if(cb){
+  //     cb()
+  //   }
+  // }
 
   createSwarm (infoHash, cb) {
     if (ArrayBuffer.isView(infoHash)) infoHash = infoHash.toString('hex')
@@ -870,7 +911,7 @@ class Server extends EventEmitter {
         for(const relay of socket.relays){
           if(self.relays.has(relay)){
             const check = self.relays.get(relay)
-            if(self.serverConnectionLimit && check.length >= self.serverConnectionLimit && check.some((data) => {return socket.id === data.id})){
+            if(self.serverConnections && check.length >= self.serverConnections && check.some((data) => {return socket.id === data.id})){
               socket.close()
               return
             } else {
@@ -888,7 +929,7 @@ class Server extends EventEmitter {
         // socket.relays.forEach((data) => {
         //   if(self.relays.has(data)){
         //     const check = self.relays.get(data)
-        //     if(self.serverConnectionLimit && check.length >= self.serverConnectionLimit){
+        //     if(self.serverConnections && check.length >= self.serverConnections){
         //       socket.close()
         //     } else {
         //       check.push(socket)
@@ -921,7 +962,7 @@ class Server extends EventEmitter {
         if(crypto.createHash('sha1').update(message.hash).digest('hex') === message.relay && self.hashes.has(message.hash) && self.relays.has(message.relay) && socket.relays.includes(message.relay)){
           const check = self.relays.get(message.relay)
           const i = check.findIndex((data) => {return socket.id === data.id})
-          if(self.serverConnectionLimit && check.length >= self.serverConnectionLimit && i !== -1){
+          if(self.serverConnections && check.length >= self.serverConnections && i !== -1){
             return
           } else {
             socket.relays.push(message.relay)
