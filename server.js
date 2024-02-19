@@ -65,6 +65,8 @@ class Server extends EventEmitter {
     
     this.stats = opts.stats
     this.limit = opts.limit
+    this.serverConnectionLimit = opts.serverConnectionLimit
+    this.clientConnectionLimit = opts.clientConnectionLimit
 
     this.dir = path.join(opts.dir || __dirname, 'dir')
     this.index = opts.index
