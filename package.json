@@ -9,7 +9,6 @@
   "dependencies": {
     "@thaunknown/simple-peer": "^9.12.1",
     "@thaunknown/simple-websocket": "^9.1.0",
-    "bcryptjs": "^2.4.3",
     "bencode": "^3.0.3",
     "bittorrent-dht": "^11.0.4",
     "bittorrent-peerid": "^1.3.3",
