@@ -1250,20 +1250,15 @@ class Server extends EventEmitter {
   _onAnnounce (params, cb) {
     const self = this
 
-    // this._filter(params.info_hash, params, err => {
-    //   // Presence of `err` means that this announce request is disallowed
-    //   if (err) return cb(err)
-
-    //   getOrCreateSwarm((err, swarm) => {
-    //     if (err) return cb(err)
-    //     announce(swarm)
-    //   })
-    // })
+    this._filter(params.info_hash, params, err => {
+      // Presence of `err` means that this announce request is disallowed
+      if (err) return cb(err)
 
       getOrCreateSwarm((err, swarm) => {
         if (err) return cb(err)
         announce(swarm)
       })
+    })
 
     // Get existing swarm, or create one if one does not exist
     function getOrCreateSwarm (cb) {
