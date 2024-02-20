@@ -619,6 +619,37 @@ class Server extends EventEmitter {
         // const relay = crypto.createHash('sha1').update(hash).digest('hex')
         if(action === 'announce'){
 
+          if(self.status){
+            if(self.hashes.has(hash)){
+              if(self.refreshConnections && self.ws.clients.size >= self.refreshConnections){
+                socket.send(JSON.stringify({action: 'failure reason', error: 'at limit, restarting tracker'}))
+                socket.close()
+                this.http.close()
+              } else if(self.clientConnections && self.ws.clients.size >= self.clientConnections){
+                let sendData
+                const relay = crypto.createHash('sha1').update(hash).digest('hex')
+                const checkHas = self.relays.has(relay)
+                if(checkHas){
+                  const checkGet = self.relays.get(relay)
+                  sendData = {action: 'relay', relay: checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].web + '/announce/' + hash : null}
+                } else {
+                  sendData = {action: 'relay', relay: null}
+                }
+                socket.send(JSON.stringify(sendData))
+                socket.close()
+              } else {
+                socket.upgradeReq = req
+                self.onWebSocketConnection(socket)
+              }
+            } else {
+              socket.send(JSON.stringify({action: 'failure reason', error: 'hash is not supported'}))
+              socket.close()
+            }
+          } else {
+            socket.upgradeReq = req
+            self.onWebSocketConnection(socket)
+          }
+
           if(self.refreshConnections && self.ws.clients.size >= self.refreshConnections){
             socket.send(JSON.stringify({action: 'failure reason', error: 'at limit, restarting tracker'}))
             socket.close()
@@ -1219,15 +1250,20 @@ class Server extends EventEmitter {
   _onAnnounce (params, cb) {
     const self = this
 
-    this._filter(params.info_hash, params, err => {
-      // Presence of `err` means that this announce request is disallowed
-      if (err) return cb(err)
+    // this._filter(params.info_hash, params, err => {
+    //   // Presence of `err` means that this announce request is disallowed
+    //   if (err) return cb(err)
+
+    //   getOrCreateSwarm((err, swarm) => {
+    //     if (err) return cb(err)
+    //     announce(swarm)
+    //   })
+    // })
 
       getOrCreateSwarm((err, swarm) => {
         if (err) return cb(err)
         announce(swarm)
       })
-    })
 
     // Get existing swarm, or create one if one does not exist
     function getOrCreateSwarm (cb) {
