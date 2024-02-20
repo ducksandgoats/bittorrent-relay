@@ -30,7 +30,6 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  * Responses include a peer list that helps the client participate in the torrent.
  *
  * @param {Object}  opts                options object
- * @param {Number}  opts.announceTimer       tell clients to announce on this interval (ms)
  * @param {Object}  opts.timer       interval for general things like checking for active and inactive connections (ms)
  * @param {Number}  opts.dhtPort      port used for the dht
  * @param {Number}  opts.trackerPort     port used for the tracker
@@ -49,6 +48,8 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  * @param {Boolean} opts.data      enable routes to share internal data to users
  * @param {Boolean} opts.status          accept only the hashes from the hashes array in the hashes option
  * @param {Boolean|String}  opts.index    serve an html file when the request is to /
+ * @param {Boolean|String}  opts.peersCacheLength    max amount of elements in cache, default is 1000
+ * @param {Boolean|String}  opts.peersCacheTtl    max amount of time to hold elements in cache, default is 20 minutes
  */
 
 // * @param {Function}  opts.extendRelay    have custom capabilities
@@ -74,7 +75,7 @@ class Server extends EventEmitter {
     this.activity = opts.timer.activity || 5 * 60 * 1000
 
     this.dir = path.join(opts.dir || __dirname, 'dir')
-    this.index = opts.index
+    this.index = Boolean(opts.index)
     fs.mkdirSync(this.dir)
     if(this.index === true){
       fs.writeFileSync(path.join(this.dir, 'index.html'), '<html><head><title>Relay</title></head><body><h1>Relay</h1><p>Relay</p></body></html>')
@@ -133,7 +134,7 @@ class Server extends EventEmitter {
     }
     this.key = this.user.pub
 
-    this.intervalMs = opts.announceTimer ? opts.announceTimer : 10 * 60 * 1000
+    this.intervalMs = opts.timer.interval ? opts.timer.interval : 10 * 60 * 1000
     this.peersCacheLength = opts.peersCacheLength
     this.peersCacheTtl = opts.peersCacheTtl
     this.destroyed = false
@@ -148,7 +149,7 @@ class Server extends EventEmitter {
     this.DHTHOST = opts.dhtHost || '0.0.0.0'
     this.TRACKERHOST = opts.trackerHost || '0.0.0.0'
     this.host = opts.host
-    if(!this.host || this.host === '0.0.0.0'){
+    if(!this.host || this.host.includes('0.0.0.0') || this.host.includes('localhost') || this.host.includes('127.0.0.1')){
       throw new Error('must have host')
     }
     this.port = opts.port || this.TRACKERPORT
@@ -161,9 +162,8 @@ class Server extends EventEmitter {
     this.web = `ws://${this.domain || this.host}:${this.port}`
     this.trackers = new Map()
     this.triedAlready = new Map()
-    this.status = opts.status
-    // opts.hashes = Array.isArray(opts.hashes) ? opts.hashes : []
-    this.hashes = new Set(Array.isArray(opts.hashes) ? opts.hashes : opts.hashes.split(',').filter(Boolean))
+    this.status = opts.status || null
+    this.hashes = new Set((typeof(opts.hashes) === 'object' && Array.isArray(opts.hashes)) ? opts.hashes : typeof(opts.hashes) === 'string' ? opts.hashes.split(',').filter(Boolean) : [])
     fs.writeFile(path.join(this.dir, 'hashes.txt'), JSON.stringify(Array.from(this.hashes)), {}, (err) => {
       if(err){
         this.emit('error', 'ev', err)
@@ -599,9 +599,9 @@ class Server extends EventEmitter {
     // Add default http request handler on next tick to give user the chance to add
     // their own handler first. Handle requests untouched by user's handler.
     this.ws = new WebSocketServer({
+      ...(typeof(opts.ws) === 'object' && !Array.isArray(opts.ws) ? opts.ws : {}),
       perMessageDeflate: false,
       clientTracking: true,
-      ...(isObject(opts.ws) ? opts.ws : {}),
       server: this.http
     })
     this.ws.onError = (err) => {
@@ -1347,10 +1347,6 @@ class Server extends EventEmitter {
 }
 
 Server.Swarm = Swarm
-
-function isObject (obj) {
-  return typeof obj === 'object' && obj !== null
-}
 
 function noop () {}
 
