@@ -7,7 +7,6 @@ import string2compact from 'string2compact'
 import { WebSocketServer, WebSocket } from 'ws'
 import DHT from 'bittorrent-dht'
 import { hex2bin } from 'uint8-util'
-import pidusage from 'pidusage'
 import common from './lib/common.js'
 import Swarm from './server/swarm.js'
 import parseWebSocketRequest from './server/parse-websocket.js'
@@ -50,6 +49,7 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  * @param {Boolean|String}  opts.index    serve an html file when the request is to /
  * @param {Boolean|String}  opts.peersCacheLength    max amount of elements in cache, default is 1000
  * @param {Boolean|String}  opts.peersCacheTtl    max amount of time to hold elements in cache, default is 20 minutes
+ * @param {Boolean|String}  opts.init    automatically start once instantiated
  */
 
 // * @param {Function}  opts.extendRelay    have custom capabilities
@@ -67,12 +67,14 @@ class Server extends EventEmitter {
     this.data = opts.data
     this.limit = typeof(opts.limit) === 'object' && !Array.isArray(opts.limit) ? opts.limit : {}
     this.timer = typeof(opts.timer) === 'object' && !Array.isArray(opts.timer) ? opts.timer : {}
-    this.serverConnections = opts.limit.serverConnections || 0
-    this.clientConnections = opts.limit.clientConnections || 0
-    this.refreshConnections = this.clientConnections ? this.clientConnections + (opts.limit.refresh ? opts.limit.refreshConnections || 1000 : 1000) : 0
-    this.refreshLimit = opts.limit.refreshLimit || 0
-    this.clientOrRefresh = Boolean(opts.limit.clientOrRefresh)
-    this.activity = opts.timer.activity || 5 * 60 * 1000
+    this.serverConnections = this.limit.serverConnections || 0
+    this.clientConnections = this.limit.clientConnections || 0
+    this.refreshConnections = this.clientConnections ? this.clientConnections + (this.limit.refresh ? this.limit.refreshConnections || 1000 : 1000) : 0
+    this.refreshLimit = this.limit.refreshLimit || 0
+    this.clientOrRefresh = Boolean(this.limit.clientOrRefresh)
+    this.activity = this.timer.activity || 5 * 60 * 1000
+    this.clientCount = 0
+    this.serverCount = 0
 
     this.dir = path.join(opts.dir || __dirname, 'dir')
     this.index = Boolean(opts.index)
@@ -134,7 +136,8 @@ class Server extends EventEmitter {
     }
     this.key = this.user.pub
 
-    this.intervalMs = opts.timer.interval ? opts.timer.interval : 10 * 60 * 1000
+    this.listening = false
+    this.intervalMs = this.timer.interval ? this.timer.interval : 10 * 60 * 1000
     this.peersCacheLength = opts.peersCacheLength
     this.peersCacheTtl = opts.peersCacheTtl
     this.destroyed = false
@@ -142,8 +145,8 @@ class Server extends EventEmitter {
     this.http = null
     this.ws = null
     this.domain = opts.domain || null
-    this.inactive = opts.timer.inactive || 1 * 60 * 1000
-    this.active = opts.timer.active || 5 * 60 * 1000
+    this.inactive = this.timer.inactive || 1 * 60 * 1000
+    this.active = this.timer.active || 5 * 60 * 1000
     this.DHTPORT = opts.dhtPort || 16881
     this.TRACKERPORT = opts.trackerPort || 16969
     this.DHTHOST = opts.dhtHost || '0.0.0.0'
@@ -166,7 +169,7 @@ class Server extends EventEmitter {
     this.hashes = new Set((typeof(opts.hashes) === 'object' && Array.isArray(opts.hashes)) ? opts.hashes : typeof(opts.hashes) === 'string' ? opts.hashes.split(',').filter(Boolean) : [])
     fs.writeFile(path.join(this.dir, 'hashes.txt'), JSON.stringify(Array.from(this.hashes)), {}, (err) => {
       if(err){
-        this.emit('error', 'ev', err)
+        this.emit('error', err)
       } else {
         this.emit('ev', 'saved relays')
       }
@@ -174,15 +177,17 @@ class Server extends EventEmitter {
     this.relays = new Map((() => {const test = [];this.hashes.forEach((data) => {test.push([crypto.createHash('sha1').update(data).digest('hex'), []])});return test;})())
     fs.writeFile(path.join(this.dir, 'relays.txt'), JSON.stringify(Array.from(this.relays.keys())), {}, (err) => {
       if(err){
-        this.emit('error', 'ev', err)
+        this.emit('error', err)
       } else {
         this.emit('ev', 'saved relays')
       }
     })
+    this.dataTrackers = new Map()
+    this.dataRelays = new Map()
     
     this.http = http.createServer()
     this.http.onError = (err) => {
-      self.emit('error', 'http', err)
+      self.emit('error', err)
     }
     this.http.onListening = () => {
       debug('listening')
@@ -191,20 +196,25 @@ class Server extends EventEmitter {
       //     socket.send(JSON.stringify({action: 'web', tracker: self.tracker, dht: self.dht, domain: self.domain, host: self.host, port: self.port, web: self.web, id: self.id}))
       //   }
       // }
+      this.hashes.forEach((data) => {
+        this.relays.set(crypto.createHash('sha1').update(data).digest('hex'), [])
+        this.dataRelays.set(crypto.createHash('sha1').update(data).digest('hex'), [])
+      })
       if(self.refreshConnections){
         if(self.refresh){
           clearInterval(self.refresh)
         }
         self.refresh = setInterval(() => {
           if(self.refreshConnections){
-            if(self.ws.clients.size >= self.refreshConnections){
-              self.http.close()
+            if(self.clientCount >= self.refreshConnections){
+              self.turnOffHTTP()
             }
           }
         }, this.activity)
       }
 
       self.talkToRelay()
+      this.listening = true
       self.emit('listening', 'http')
     }
     this.http.onRequest = (req, res) => {
@@ -263,297 +273,317 @@ class Server extends EventEmitter {
         html += '</ul>'
         return html
       }
-  
-      if(req.url === '/'){
-        res.statusCode = 200
-        res.setHeader('Content-Type', 'text/plain')
-        res.end('thanks for testing bittorrent-relay')
-      } else if(req.url === '/index.html' && req.method === 'GET' && this.index){
-        res.statusCode = 200
-        res.setHeader('Content-Type', 'text/html')
-        let useText = ''
-        // fs.createReadStream(path.join(this.dir, 'index.html')).pipe(res)
-        const useStream = fs.createReadStream(path.join(this.dir, 'index.html'))
-        function useError(e){
-          useOff()
-          res.end(`<html><head><title>${e.name}</title></head><body>${e.message}</body></html>`)
-        }
-        function useClose(){
-          useOff()
-          res.end(useText)
-        }
-        function useData(c){
-          useText = useText + c.toString('utf-8')
-        }
-        function useOff(){
-          useStream.off('error', useError)
-          useStream.off('data', useData)
-          useStream.off('close', useClose)
-        }
-        useStream.on('error', useError)
-        useStream.on('data', useData)
-        useStream.on('close', useClose)
-      } else if(req.url === '/stats.html' && req.method === 'GET' && this.stats){
-        infoHashes.forEach(infoHash => {
-          const peers = self.torrents[infoHash].peers
-          const keys = peers.keys
-          if (keys.length > 0) activeTorrents++
-  
-          keys.forEach(peerId => {
-            // Don't mark the peer as most recently used for stats
-            const peer = peers.peek(peerId)
-            if (peer == null) return // peers.peek() can evict the peer
-  
-            if (!hasOwnProperty.call(allPeers, peerId)) {
-              allPeers[peerId] = {
-                ipv4: false,
-                ipv6: false,
-                seeder: false,
-                leecher: false
+
+      try {
+        if(req.url === '/' && req.method === 'HEAD'){
+          res.statusCode = 200
+          res.end()
+        } else if(req.url === '/' && req.method === 'GET'){
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'text/plain')
+          res.end('thanks for testing bittorrent-relay')
+        } else if(req.url === '/index.html' && req.method === 'GET' && this.index){
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'text/html')
+          let useText = ''
+          // fs.createReadStream(path.join(this.dir, 'index.html')).pipe(res)
+          const useStream = fs.createReadStream(path.join(this.dir, 'index.html'))
+          function useError(e){
+            useOff()
+            res.end(`<html><head><title>${e.name}</title></head><body>${e.message}</body></html>`)
+          }
+          function useClose(){
+            useOff()
+            res.end(useText)
+          }
+          function useData(c){
+            useText = useText + c.toString('utf-8')
+          }
+          function useOff(){
+            useStream.off('error', useError)
+            useStream.off('data', useData)
+            useStream.off('close', useClose)
+          }
+          useStream.on('error', useError)
+          useStream.on('data', useData)
+          useStream.on('close', useClose)
+        } else if(req.url === '/stats.html' && req.method === 'GET' && this.stats){
+          infoHashes.forEach(infoHash => {
+            const peers = self.torrents[infoHash].peers
+            const keys = peers.keys
+            if (keys.length > 0) activeTorrents++
+    
+            keys.forEach(peerId => {
+              // Don't mark the peer as most recently used for stats
+              const peer = peers.peek(peerId)
+              if (peer == null) return // peers.peek() can evict the peer
+    
+              if (!hasOwnProperty.call(allPeers, peerId)) {
+                allPeers[peerId] = {
+                  ipv4: false,
+                  ipv6: false,
+                  seeder: false,
+                  leecher: false
+                }
               }
-            }
-  
-            if (peer.ip.includes(':')) {
-              allPeers[peerId].ipv6 = true
-            } else {
-              allPeers[peerId].ipv4 = true
-            }
-  
-            if (peer.complete) {
-              allPeers[peerId].seeder = true
-            } else {
-              allPeers[peerId].leecher = true
-            }
-  
-            allPeers[peerId].peerId = peer.peerId
-            allPeers[peerId].client = peerid(peer.peerId)
+    
+              if (peer.ip.includes(':')) {
+                allPeers[peerId].ipv6 = true
+              } else {
+                allPeers[peerId].ipv4 = true
+              }
+    
+              if (peer.complete) {
+                allPeers[peerId].seeder = true
+              } else {
+                allPeers[peerId].leecher = true
+              }
+    
+              allPeers[peerId].peerId = peer.peerId
+              allPeers[peerId].client = peerid(peer.peerId)
+            })
           })
-        })
-  
-        const isSeederOnly = peer => peer.seeder && peer.leecher === false
-        const isLeecherOnly = peer => peer.leecher && peer.seeder === false
-        const isSeederAndLeecher = peer => peer.seeder && peer.leecher
-        const isIPv4 = peer => peer.ipv4
-        const isIPv6 = peer => peer.ipv6
-  
-        const stats = {
-          torrents: infoHashes.length,
-          activeTorrents,
-          peersAll: Object.keys(allPeers).length,
-          peersSeederOnly: countPeers(isSeederOnly),
-          peersLeecherOnly: countPeers(isLeecherOnly),
-          peersSeederAndLeecher: countPeers(isSeederAndLeecher),
-          peersIPv4: countPeers(isIPv4),
-          peersIPv6: countPeers(isIPv6),
-          clients: groupByClient()
-        }
-  
-        res.setHeader('Content-Type', 'text/html')
-        res.end(`
-          <h1>${stats.torrents} torrents (${stats.activeTorrents} active)</h1>
-          <h2>Connected Peers: ${stats.peersAll}</h2>
-          <h3>Peers Seeding Only: ${stats.peersSeederOnly}</h3>
-          <h3>Peers Leeching Only: ${stats.peersLeecherOnly}</h3>
-          <h3>Peers Seeding & Leeching: ${stats.peersSeederAndLeecher}</h3>
-          <h3>IPv4 Peers: ${stats.peersIPv4}</h3>
-          <h3>IPv6 Peers: ${stats.peersIPv6}</h3>
-          <h3>Clients:</h3>
-          ${printClients(stats.clients)}
-        `.replace(/^\s+/gm, '')) // trim left
-
-      } else if(req.method === 'GET' && req.url === '/addresses.json' && this.data){
-        const arr = []
-        for(const i in self.trackers.values()){
-          arr.push(i.address)
-        }
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(arr))
-      } else if(req.method === 'GET' && req.url === '/ids.json' && this.data){
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(Array.from(self.trackers.keys())))
-      } else if(req.method === 'GET' && req.url === '/hashes.json' && this.data){
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(Array.from(this.hashes)))
-      } else if(req.method === 'GET' && req.url === '/relays.json' && this.data){
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(Array.from(self.relays.keys())))
-      } else if(req.method === 'GET' && req.url === '/keys.json' && this.data){
-        const arr = []
-        for(const i in self.trackers.values()){
-          arr.push(i.key)
-        }
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify(arr))
-      } else if(req.method === 'GET' && req.url === '/index.json'){
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify('thanks for using bittorrent-relay'))
-      } else if(req.method === 'POST' && req.url.startsWith('/add/') && this.auth){
-        let useAuth = ''
-        let useRes
-        function onData(data){
-          useAuth = useAuth + data.toString()
-        }
-        function onEnd(){
-          const sign = ed.sign(self.user.msg, self.user.pub, useAuth)
-          if(!ed.verify(sign, self.user.msg, self.user.pub) || self.user.sig !== sign.toString('hex')){
-            res.statusCode = 400
-            useRes = 'unsuccessful'
-          } else {
-            const ih = req.url.replace('/add/', '')
-            const testHash = crypto.createHash('sha1').update(ih).digest('hex')
-            const checkHash = self.hashes.has(ih)
-            const checkRelay = self.relays.has(testHash)
-            const check = checkHash && checkRelay
-            if(check){
-              res.statusCode = 400
-              useRes = 'already exists'
-            } else {
-              res.statusCode = 200
-              if(!checkHash){
-                self.hashes.add(ih)
-              }
-              if(!checkRelay){
-                self.relays.set(testHash, [])
-              }
-              self.relay.lookup(testHash, (err, num) => {
-                if(err){
-                  self.emit('error', 'ev', err)
-                } else {
-                  self.emit('ev', num)
-                }
-              })
-              self.relay.announce(testHash, self.TRACKERPORT, (err) => {
-                if(err){
-                  self.emit('error', 'ev', err)
-                } else {
-                  self.emit('ev', 'announced ' + ih)
-                }
-              })
-              fs.writeFile(path.join(self.dir, 'hashes.txt'), JSON.stringify(Array.from(self.hashes)), {}, (err) => {
-                if(err){
-                  self.emit('error', 'ev', err)
-                } else {
-                  self.emit('ev', 'saved relays')
-                }
-              })
-              fs.writeFile(path.join(self.dir, 'relays.txt'), JSON.stringify(Array.from(self.relays.keys())), {}, (err) => {
-                if(err){
-                  self.emit('error', 'ev', err)
-                } else {
-                  self.emit('ev', 'saved relays')
-                }
-              })
-              for(const testObj of self.trackers.values()){
-                testObj.send(JSON.stringify({action: 'add', relay: testHash, hash: ih}))
-              }
-              useRes = 'successful'
-            }
+    
+          const isSeederOnly = peer => peer.seeder && peer.leecher === false
+          const isLeecherOnly = peer => peer.leecher && peer.seeder === false
+          const isSeederAndLeecher = peer => peer.seeder && peer.leecher
+          const isIPv4 = peer => peer.ipv4
+          const isIPv6 = peer => peer.ipv6
+    
+          const stats = {
+            torrents: infoHashes.length,
+            activeTorrents,
+            peersAll: Object.keys(allPeers).length,
+            peersSeederOnly: countPeers(isSeederOnly),
+            peersLeecherOnly: countPeers(isLeecherOnly),
+            peersSeederAndLeecher: countPeers(isSeederAndLeecher),
+            peersIPv4: countPeers(isIPv4),
+            peersIPv6: countPeers(isIPv6),
+            clients: groupByClient()
           }
-        }
-        function onError(err){
-          // useOff()
-          res.statusCode = 400
-          useRes = err.message
-          req.destroy()
-          // res.end(err.message)
-        }
-        function onClose(){
-          useOff()
-          res.end(useRes)
-        }
-        function useOff(){
-          req.off('data', onData)
-          req.off('end', onEnd)
-          req.off('error', onError)
-          req.off('close', onClose)
-        }
-        req.on('data', onData)
-        req.on('end', onEnd)
-        req.on('error', onError)
-        req.on('close', onClose)
-      } else if(req.method === 'POST' && req.url.startsWith('/sub/') && this.auth){
-        let useAuth = ''
-        let useRes
-        function onData(data){
-          useAuth = useAuth + data.toString()
-        }
-        function onError(err){
-          // useOff()
-          res.statusCode = 400
-          useRes = err.message
-          req.destroy()
-          // res.end(err.message)
-        }
-        function onEnd(){
-          const sign = ed.sign(self.user.msg, self.user.pub, useAuth)
-          if(!ed.verify(sign, self.user.msg, self.user.pub) || self.user.sig !== sign.toString('hex')){
-            res.statusCode = 400
-            useRes = 'unsuccessful'
-          } else {
-            const ih = req.url.replace('/sub/', '')
-            const testHash = crypto.createHash('sha1').update(ih).digest('hex')
-
-            const checkHash = self.hashes.has(ih)
-            const checkRelay = self.relays.has(testHash)
-            const check = checkHash && checkRelay
-            if(check){
-              res.statusCode = 200
-              if(checkHash){
-                self.hashes.delete(ih)
-              }
-              if(checkRelay){
-                self.relays.get(testHash).forEach((data) => {
-                  // data.send(JSON.stringify({action: 'sub', relay: testHash, hash: ih}))
-                  data.close()
-                  // data.terminate()
+    
+          res.setHeader('Content-Type', 'text/html')
+          res.end(`
+            <h1>${stats.torrents} torrents (${stats.activeTorrents} active)</h1>
+            <h2>Connected Peers: ${stats.peersAll}</h2>
+            <h3>Peers Seeding Only: ${stats.peersSeederOnly}</h3>
+            <h3>Peers Leeching Only: ${stats.peersLeecherOnly}</h3>
+            <h3>Peers Seeding & Leeching: ${stats.peersSeederAndLeecher}</h3>
+            <h3>IPv4 Peers: ${stats.peersIPv4}</h3>
+            <h3>IPv6 Peers: ${stats.peersIPv6}</h3>
+            <h3>Clients:</h3>
+            ${printClients(stats.clients)}
+          `.replace(/^\s+/gm, '')) // trim left
+  
+        } else if(req.method === 'GET' && req.url === '/addresses.json' && this.data){
+          const arr = []
+          for(const i in self.trackers.values()){
+            arr.push(i.address)
+          }
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(arr))
+        } else if(req.method === 'GET' && req.url === '/ids.json' && this.data){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(Array.from(self.trackers.keys())))
+        } else if(req.method === 'GET' && req.url === '/hashes.json' && this.data){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(Array.from(this.hashes)))
+        } else if(req.method === 'GET' && req.url === '/relays.json' && this.data){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(Array.from(self.relays.keys())))
+        } else if(req.method === 'GET' && req.url === '/keys.json' && this.data){
+          const arr = []
+          for(const i in self.trackers.values()){
+            arr.push(i.key)
+          }
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(arr))
+        } else if(req.method === 'GET' && req.url === '/index.json'){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify('thanks for using bittorrent-relay'))
+        } else if(req.method === 'POST' && req.url.startsWith('/add/') && this.auth){
+          let useAuth = ''
+          let useRes
+          function onData(data){
+            useAuth = useAuth + data.toString()
+          }
+          function onEnd(){
+            const sign = ed.sign(self.user.msg, self.user.pub, useAuth)
+            if(!ed.verify(sign, self.user.msg, self.user.pub) || self.user.sig !== sign.toString('hex')){
+              res.statusCode = 400
+              useRes = 'unsuccessful'
+            } else {
+              const ih = req.url.replace('/add/', '')
+              const testHash = crypto.createHash('sha1').update(ih).digest('hex')
+              const checkHash = self.hashes.has(ih)
+              const checkRelay = self.relays.has(testHash)
+              const checkDataRelay = self.dataRelays.has(testHash)
+              const check = checkDataRelay && checkHash && checkRelay
+              if(check){
+                res.statusCode = 400
+                useRes = 'already exists'
+              } else {
+                res.statusCode = 200
+                if(!checkHash){
+                  self.hashes.add(ih)
+                }
+                if(!checkRelay){
+                  self.relays.set(testHash, [])
+                }
+                if(!checkDataRelay){
+                  self.dataRelays.set(testHash, [])
+                }
+                self.relay.lookup(testHash, (err, num) => {
+                  if(err){
+                    self.emit('error', err)
+                  } else {
+                    self.emit('ev', num)
+                  }
                 })
-                self.relays.delete(testHash)
-              }
-              fs.writeFile(path.join(self.dir, 'hashes.txt'), JSON.stringify(Array.from(self.hashes)), {}, (err) => {
-                if(err){
-                  self.emit('error', 'ev', err)
-                } else {
-                  self.emit('ev', 'saved relays')
+                self.relay.announce(testHash, self.TRACKERPORT, (err) => {
+                  if(err){
+                    self.emit('error', err)
+                  } else {
+                    self.emit('ev', 'announced ' + ih)
+                  }
+                })
+                fs.writeFile(path.join(self.dir, 'hashes.txt'), JSON.stringify(Array.from(self.hashes)), {}, (err) => {
+                  if(err){
+                    self.emit('error', err)
+                  } else {
+                    self.emit('ev', 'saved relays')
+                  }
+                })
+                fs.writeFile(path.join(self.dir, 'relays.txt'), JSON.stringify(Array.from(self.relays.keys())), {}, (err) => {
+                  if(err){
+                    self.emit('error', err)
+                  } else {
+                    self.emit('ev', 'saved relays')
+                  }
+                })
+                for(const testObj of self.trackers.values()){
+                  testObj.send(JSON.stringify({action: 'add', relay: testHash, hash: ih}))
                 }
-              })
-              fs.writeFile(path.join(self.dir, 'relays.txt'), JSON.stringify(Array.from(self.relays.keys())), {}, (err) => {
-                if(err){
-                  self.emit('error', 'ev', err)
-                } else {
-                  self.emit('ev', 'saved relays')
-                }
-              })
-              for(const testObj of self.trackers.values()){
-                testObj.send(JSON.stringify({action: 'sub', relay: testHash, hash: ih}))
+                useRes = 'successful'
               }
-              useRes = 'successful'
-            } else {
-              res.statusCode = 400
-              useRes = 'already does not exist'
             }
           }
+          function onError(err){
+            // useOff()
+            res.statusCode = 400
+            useRes = err.message
+            req.destroy()
+            // res.end(err.message)
+          }
+          function onClose(){
+            useOff()
+            res.end(useRes)
+          }
+          function useOff(){
+            req.off('data', onData)
+            req.off('end', onEnd)
+            req.off('error', onError)
+            req.off('close', onClose)
+          }
+          req.on('data', onData)
+          req.on('end', onEnd)
+          req.on('error', onError)
+          req.on('close', onClose)
+        } else if(req.method === 'POST' && req.url.startsWith('/sub/') && this.auth){
+          let useAuth = ''
+          let useRes
+          function onData(data){
+            useAuth = useAuth + data.toString()
+          }
+          function onError(err){
+            // useOff()
+            res.statusCode = 400
+            useRes = err.message
+            req.destroy()
+            // res.end(err.message)
+          }
+          function onEnd(){
+            const sign = ed.sign(self.user.msg, self.user.pub, useAuth)
+            if(!ed.verify(sign, self.user.msg, self.user.pub) || self.user.sig !== sign.toString('hex')){
+              res.statusCode = 400
+              useRes = 'unsuccessful'
+            } else {
+              const ih = req.url.replace('/sub/', '')
+              const testHash = crypto.createHash('sha1').update(ih).digest('hex')
+              const checkHash = self.hashes.has(ih)
+              const checkRelay = self.relays.has(testHash)
+              const checkDataRelay = self.dataRelays.has(testHash)
+              const check = checkDataRelay && checkHash && checkRelay
+              if(check){
+                res.statusCode = 200
+                if(checkHash){
+                  self.hashes.delete(ih)
+                }
+                if(checkRelay){
+                  self.relays.get(testHash).forEach((data) => {
+                    data.send(JSON.stringify({action: 'sub', relay: testHash, reply: false}))
+                    data.close()
+                    // data.terminate()
+                  })
+                  self.relays.delete(testHash)
+                }
+                if(checkDataRelay){
+                  self.dataRelays.get(testHash).forEach((data) => {
+                    data.close()
+                  })
+                  self.dataRelays.delete(testHash)
+                }
+                fs.writeFile(path.join(self.dir, 'hashes.txt'), JSON.stringify(Array.from(self.hashes)), {}, (err) => {
+                  if(err){
+                    self.emit('error', err)
+                  } else {
+                    self.emit('ev', 'saved relays')
+                  }
+                })
+                fs.writeFile(path.join(self.dir, 'relays.txt'), JSON.stringify(Array.from(self.relays.keys())), {}, (err) => {
+                  if(err){
+                    self.emit('error', err)
+                  } else {
+                    self.emit('ev', 'saved relays')
+                  }
+                })
+                // for(const testObj of self.trackers.values()){
+                //   testObj.send(JSON.stringify({action: 'sub', relay: testHash, hash: ih}))
+                // }
+                useRes = 'successful'
+              } else {
+                res.statusCode = 400
+                useRes = 'already does not exist'
+              }
+            }
+          }
+          function onClose(){
+            useOff()
+            res.end(useRes)
+          }
+          function useOff(){
+            req.off('data', onData)
+            req.off('error', onError)
+            req.off('end', onEnd)
+            req.off('close', onClose)
+          }
+          req.on('data', onData)
+          req.on('error', onError)
+          req.on('end', onEnd)
+          req.on('close', onClose)
+        } else {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify('invalid method or path'))
         }
-        function onClose(){
-          useOff()
-          res.end(useRes)
-        }
-        function useOff(){
-          req.off('data', onData)
-          req.off('error', onError)
-          req.off('end', onEnd)
-          req.off('close', onClose)
-        }
-        req.on('data', onData)
-        req.on('error', onError)
-        req.on('end', onEnd)
-        req.on('close', onClose)
-      } else {
-        res.statusCode = 400
+      } catch (error) {
+        res.statusCode = 500
         res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify('invalid method or path'))
+        res.end(JSON.stringify(error.message))
       }
     }
     this.http.onClose = () => {
+      this.http.handleListeners()
       // this.ws.clients.forEach((data) => {
       //   data.send(JSON.stringify({action: 'off'}))
       //   data.terminate()
@@ -566,9 +596,8 @@ class Server extends EventEmitter {
       this.trackers.clear()
       this.triedAlready.clear()
       this.relays.clear()
-      this.hashes.forEach((data) => {
-        this.relays.set(crypto.createHash('sha1').update(data).digest('hex'), [])
-      })
+      this.dataTrackers.clear()
+      this.dataRelays.clear()
 
       if(self.refreshConnections){
         if(self.refresh){
@@ -576,36 +605,40 @@ class Server extends EventEmitter {
         }
         self.refresh = setInterval(() => {
           const check = self.clientOrRefresh ? self.refreshConnections : self.clientConnections
-          if(self.ws.clients.size <= check){
+          if(self.clientCount <= check){
             if(self.refreshLimit){
-              if(self.ws.clients.size <= self.refreshLimit){
-                self.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+              if(self.clientCount <= self.refreshLimit){
+                self.turnWeb()
+                self.turnOnHTTP()
               }
             } else {
-              self.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+              self.turnWeb()
+              self.turnOnHTTP()
             }
           }
         }, this.activity)
       }
 
+      this.listening = false
       self.emit('close', 'http')
     }
-
-    this.http.on('error', this.http.onError)
-    this.http.on('listening', this.http.onListening)
-    this.http.on('request', this.http.onRequest)
-    this.http.on('close', this.http.onClose)
+    this.http.handleListeners = () => {
+      this.http.off('error', this.http.onError)
+      this.http.off('listening', this.http.onListening)
+      this.http.off('request', this.http.onRequest)
+      this.http.off('close', this.http.onClose)
+    }
 
     // Add default http request handler on next tick to give user the chance to add
     // their own handler first. Handle requests untouched by user's handler.
     this.ws = new WebSocketServer({
       ...(typeof(opts.ws) === 'object' && !Array.isArray(opts.ws) ? opts.ws : {}),
       perMessageDeflate: false,
-      clientTracking: true,
+      clientTracking: false,
       server: this.http
     })
     this.ws.onError = (err) => {
-      self.emit('error', 'ws', err)
+      self.emit('error', err)
     }
     this.ws.onConnection = (socket, req) => {
       // Note: socket.upgradeReq was removed in ws@3.0.0, so re-add it.
@@ -613,103 +646,17 @@ class Server extends EventEmitter {
 
       // if resource usage is high, send only the url of another tracker
       // else handle websockets as usual
-      try {
-        const action = req.url.slice(0, req.url.lastIndexOf('/')).slice(1)
-        const hash = req.url.slice(req.url.lastIndexOf('/')).slice(1)
-        // const relay = crypto.createHash('sha1').update(hash).digest('hex')
-        if(action === 'announce'){
-
-          if(self.status){
-            if(self.hashes.has(hash)){
-              if(self.refreshConnections && self.ws.clients.size >= self.refreshConnections){
-                socket.send(JSON.stringify({action: 'failure reason', error: 'at limit, restarting tracker'}))
-                socket.close()
-                this.http.close()
-              } else if(self.clientConnections && self.ws.clients.size >= self.clientConnections){
-                let sendData
-                const relay = crypto.createHash('sha1').update(hash).digest('hex')
-                const checkHas = self.relays.has(relay)
-                if(checkHas){
-                  const checkGet = self.relays.get(relay)
-                  sendData = {action: 'relay', relay: checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].web + '/announce/' + hash : null}
-                } else {
-                  sendData = {action: 'relay', relay: null}
-                }
-                socket.send(JSON.stringify(sendData))
-                socket.close()
-              } else {
-                socket.upgradeReq = req
-                self.onWebSocketConnection(socket)
-              }
-            } else {
-              socket.send(JSON.stringify({action: 'failure reason', error: 'hash is not supported'}))
-              socket.close()
-            }
-          } else {
-            socket.upgradeReq = req
-            self.onWebSocketConnection(socket)
-          }
-
-          if(self.refreshConnections && self.ws.clients.size >= self.refreshConnections){
-            socket.send(JSON.stringify({action: 'failure reason', error: 'at limit, restarting tracker'}))
-            socket.close()
-            this.http.close()
-          } else if(self.clientConnections && self.ws.clients.size >= self.clientConnections){
-            let sendData
-            if(self.hashes.has(hash)){
-              const relay = crypto.createHash('sha1').update(hash).digest('hex')
-              const checkHas = self.relays.has(relay)
-              if(checkHas){
-                const checkGet = self.relays.get(relay)
-                sendData = {action: 'relay', relay: checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].web + '/announce/' + hash : null}
-              } else {
-                sendData = {action: 'relay', relay: null}
-              }
-            } else {
-              sendData = {action: 'relay', relay: null}
-            }
-            socket.send(JSON.stringify(sendData))
-            socket.close()
-          } else {
-            socket.upgradeReq = req
-            self.onWebSocketConnection(socket)
-          }
-
-        } else if(action === 'relay'){
-
-          // if(this.triedAlready.has(hash)){
-          //   this.triedAlready.delete(hash)
-          // }
-          if(self.relays.has(hash)){
-            if(self.serverConnections && self.relays.get(hash).length >= self.serverConnections ){
-              socket.close()
-            } else {
-              socket.id = null
-              socket.server = true
-              socket.active = true
-              socket.session = false
-              socket.relays = [hash]
-              socket.hashes = []
-              self.onRelaySocketConnection(socket)
-            }
-          } else {
-            socket.close()
-          }
-          // if(self.trackers.has(hash)){
-          //   socket.terminate()
-          // } else {
-          //   socket.id = hash
-          //   socket.server = true
-          //   socket.active = true
-          //   socket.relays = []
-          //   socket.hashes = []
-          //   self.onRelaySocketConnection(socket)
-          // }
-
-        } else {
-          throw new Error('invalid path')
-        }
-      } catch (error) {
+      if(req.url === '/announce'){
+        socket.upgradeReq = req
+        self.onWebSocketConnection(socket)
+      } else if(req.url === '/relay'){
+        socket.id = null
+        socket.server = true
+        socket.active = true
+        socket.proc = false
+        socket.relays = []
+        this.onRelaySocketConnection(socket)
+      } else {
         socket.send(JSON.stringify({action: 'failure reason', error: error.message}))
         socket.close()
       }
@@ -720,10 +667,6 @@ class Server extends EventEmitter {
     this.ws.onClose = () => {
       self.emit('close', 'ws')
     }
-    this.ws.on('listening', this.ws.onListening)
-    this.ws.on('close', this.ws.onClose)
-    this.ws.on('error', this.ws.onError)
-    this.ws.on('connection', this.ws.onConnection)
 
     // this.intervalUsage(60000)
 
@@ -735,39 +678,17 @@ class Server extends EventEmitter {
       self.emit('ready', 'relay')
     }
     this.relay.onError = (err) => {
-      self.emit('error', 'relay', err)
+      self.emit('error', err)
     }
     this.relay.onClose = () => {
       self.emit('close', 'relay')
     }
-    this.relay.on('ready', this.relay.onReady)
-    this.relay.on('listening', this.relay.onListening)
-    this.relay.on('error', this.relay.onError)
-    this.relay.on('close', this.relay.onClose)
-    
-    this.relay.on('peer', (peer, infoHash, from) => {
+    this.relay.onPeer = (peer, infoHash, from) => {
       // if not connected, then connect socket
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
 
       if(this.status && !this.relays.has(infoHash)){
-        return
-      }
-
-      if(this.serverConnections && this.relays.get(infoHash).length >= this.serverConnections){
-        return
-      }
-
-      const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
-      if(self.id === id){
-        return
-      }
-
-      if(this.trackers.has(id)){
-        const check = this.trackers.get(id)
-        if(!check.relays.includes(infoHash)){
-          check.send(JSON.stringify({action: 'session'}))
-        }
         return
       }
 
@@ -779,33 +700,87 @@ class Server extends EventEmitter {
         }
       }
 
-      const relay = `ws://${peer.host}:${peer.port}/relay/`
-      const con = new WebSocket(relay + self.id)
+      const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
+      if(self.id === id){
+        return
+      }
+
+      if(this.trackers.has(id)){
+        const checkRelay = this.relays.get(infoHash)
+        if(this.serverConnections && checkRelay.length < this.serverConnections){
+          const checkTracker = this.trackers.get(id)
+          const i = checkRelay.findIndex((data) => {return checkTracker.id === data.id})
+          if(i === -1){
+            checkRelay.push(checkTracker)
+            if(!checkTracker.relays.includes(infoHash)){
+              checkTracker.relays.push(infoHash)
+            }
+            checkTracker.send(JSON.stringify({action: 'add', relay: infoHash, reply: false}))
+          }
+        }
+        return
+      }
+
+      if(this.dataTrackers.has(id)){
+        const extraTracker = this.dataTrackers.get(id)
+        const checkStamp =  (Date.now() - extraTracker.check.stamp) / 1000
+        if(extraTracker.check.wait >= checkStamp){
+          return
+        }
+      }
+
+      const relay = `ws://${peer.host}:${peer.port}/relay`
+      const con = new WebSocket(relay)
       con.server = false
       con.active = true
-      con.session = false
       con.relays = [infoHash]
-      con.hashes = []
+      con.proc = false
       con.id = id
       self.onRelaySocketConnection(con)
-    })
+    }
+    if(opts.init){
+      this.create(() => {
+        console.log('now listening')
+      })
+    }
+  }
 
-    this.intervalRelay = setInterval(() => {
-      this.talkToRelay()
-    }, this.active)
+  turnOnHTTP(){
+    this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+  }
 
-    this.intervalActive = setInterval(() => {
-      for(const test in this.trackers.values()){
-        if(!test.active){
-          test.terminate()
-          continue
-        }
-        test.active = false
-        test.send(JSON.stringify({action: 'ping'}))
+  midDHT(){
+    this.relay.listen(this.DHTPORT, this.DHTHOST)
+  }
+
+  turnOffHTTP(){
+    this.http.close((err) => {
+      if(err){
+        this.emit('error', err)
       }
-    }, this.inactive)
+    })
+  }
 
-    this.talkToRelay()
+  turnWeb(){
+    this.http.on('error', this.http.onError)
+    this.http.on('listening', this.http.onListening)
+    this.http.on('request', this.http.onRequest)
+    this.http.on('close', this.http.onClose)
+  }
+
+  turnSocket(){
+    this.ws.on('listening', this.ws.onListening)
+    this.ws.on('close', this.ws.onClose)
+    this.ws.on('error', this.ws.onError)
+    this.ws.on('connection', this.ws.onConnection)
+  }
+
+  turnRelay(){
+    this.relay.on('ready', this.relay.onReady)
+    this.relay.on('listening', this.relay.onListening)
+    this.relay.on('error', this.relay.onError)
+    this.relay.on('close', this.relay.onClose)
+    this.relay.on('peer', this.relay.onPeer)
   }
 
   _filter(infoHash, params, cb){
@@ -846,14 +821,14 @@ class Server extends EventEmitter {
       } else {
         this.relay.lookup(test, (err, num) => {
           if(err){
-            this.emit('error', 'ev', err)
+            this.emit('error', err)
           } else {
             this.emit('ev', test + ': ' + num)
           }
         })
         this.relay.announce(test, this.TRACKERPORT, (err) => {
           if(err){
-            this.emit('error', 'ev', err)
+            this.emit('error', err)
           } else {
             this.emit('ev', 'announced ' + test)
           }
@@ -862,22 +837,72 @@ class Server extends EventEmitter {
     }
   }
 
-  listens(cb = null){
-    this.relay.listen(this.DHTPORT, this.DHTHOST)
-    this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+  // runTheRelay(data){
+  //   const test = crypto.createHash('sha1').update(data).digest('hex')
+  //   this.relay.lookup(test, (err, num) => {
+  //     if(err){
+  //       this.emit('error', err)
+  //     } else {
+  //       this.emit('ev', test + ': ' + num)
+  //     }
+  //   })
+  //   this.relay.announce(test, this.TRACKERPORT, (err) => {
+  //     if(err){
+  //       this.emit('error', err)
+  //     } else {
+  //       this.emit('ev', 'announced ' + test)
+  //     }
+  //   })
+  // }
+
+  create(cb = null){
+    this.turnRelay()
+    this.turnSocket()
+    this.turnWeb()
+    this.midDHT()
+    this.turnOnHTTP()
+    this.talkToRelay()
+    this.intervalRelay = setInterval(() => {
+      this.talkToRelay()
+    }, this.active)
+
+    this.intervalActive = setInterval(() => {
+      for(const test in this.trackers.values()){
+        if(!test.active){
+          test.terminate()
+          continue
+        }
+        test.active = false
+        test.send(JSON.stringify({action: 'ping'}))
+      }
+    }, this.inactive)
     if(cb){
       cb()
     }
   }
 
-  // turnOff(cb = null){
-  //   // this.ws.close()
-  //   this.relay.destroy()
-  //   this.http.close()
-  //   if(cb){
-  //     cb()
-  //   }
-  // }
+  destroy(cb = null){
+    this.http.close((err) => {
+      this.emit('error', err)
+    })
+    this.ws.close((err) => {
+      this.emit('error', err)
+    })
+    this.relay.destroy()
+    if(this.refresh){
+      clearInterval(this.refresh)
+    }
+    clearInterval(this.intervalRelay)
+    clearInterval(this.intervalActive)
+    this.trackers.clear()
+    this.relays.clear()
+    this.dataTrackers.clear()
+    this.dataRelays.clear()
+    this.hashes.clear()
+    if(cb){
+      cb()
+    }
+  }
 
   createSwarm (infoHash, cb) {
     if (ArrayBuffer.isView(infoHash)) infoHash = infoHash.toString('hex')
@@ -897,16 +922,25 @@ class Server extends EventEmitter {
   }
 
   onRelaySocketConnection(socket){
+    this.serverCount = this.serverCount + 1
     // if id sent from messages exists already in this.trackers then close the socket
     const self = this
     socket.onOpen = function(){
+      // do limit check
+      // send the right messages
       // self.trackers[socket.id] = socket
       if(socket.id){
         if(self.triedAlready.has(socket.id)){
           self.triedAlready.delete(socket.id)
         }
       }
-      socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: Array.from(self.relays.keys()), hashes: Array.from(self.hashes), status: self.status, action: 'session'}))
+      if(!socket.server){
+        if(this.serverConnections && this.relays.get(socket.relays[0]).length >= this.serverConnections){
+          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'extra', reply: true}))
+        } else {
+          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'session', reply: true}))
+        }
+      }
     }
     socket.onError = function(err){
       let useSocket
@@ -923,111 +957,111 @@ class Server extends EventEmitter {
         useSocket = 'socket'
       }
       // socket.terminate()
-      self.emit('error', 'ws', err)
-      self.emit('ev', useSocket + ' had an error, will wait and try to connect later')
+      // self.emit('error', 'ws', err)
+      self.emit('ev', useSocket + ' had an error, will wait and try to connect later, ' + err.message)
     }
     socket.onMessage = function(data, buffer){
-      const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
-      if(message.action === 'session'){
-        if(socket.id){
-          if(self.trackers.has(socket.id) || socket.id !== message.id){
-            socket.close()
-            return
-          }
-        } else {
-          socket.id = message.id
-        }
-        self.trackers.set(socket.id, socket)
-        socket.session = true
-        for(const relay of socket.relays){
-          if(self.relays.has(relay)){
-            const check = self.relays.get(relay)
-            if(self.serverConnections && check.length >= self.serverConnections && check.some((data) => {return socket.id === data.id})){
+      // do limit check
+      // send the right data
+      try {
+        const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
+        if(message.action === 'session'){
+          if(socket.id){
+            if(self.trackers.has(socket.id) || socket.id !== message.id){
               socket.close()
               return
-            } else {
-              // const i = check.findIndex((data) => {return socket.id === data.id})
-              // if(i === -1){
-              //   check.push(socket)
-              // }
-              check.push(socket)
             }
           } else {
+            socket.id = message.id
+            if(self.trackers.has(socket.id)){
+              socket.close()
+              return
+            }
+          }
+          if(!self.relays.has(message.relay)){
             socket.close()
             return
           }
-        }
-        // socket.relays.forEach((data) => {
-        //   if(self.relays.has(data)){
-        //     const check = self.relays.get(data)
-        //     if(self.serverConnections && check.length >= self.serverConnections){
-        //       socket.close()
-        //     } else {
-        //       check.push(socket)
-        //     }
-        //   } else {
-        //     socket.close()
-        //   }
-        // })
-        socket.status = message.status
-        socket.key = message.key
-        socket.domain = message.domain
-        socket.tracker = message.tracker
-        socket.port = message.port
-        socket.host = message.host
-        socket.web = message.web
-        socket.dht = message.dht
-        socket.address = message.address
-        socket.hostPort = message.hostPort
-        socket.relay = message.web + '/relay'
-        socket.announce = message.web + '/announce'
-        // if(!socket.relays.length){
-        //   socket.close()
-        //   return
-        // }
-        if(socket.server){
-          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relays: Array.from(self.relays.keys()), hashes: Array.from(self.hashes), status: self.status, action: 'session'}))
-        }
-      }
-      if(message.action === 'add'){
-        if(crypto.createHash('sha1').update(message.hash).digest('hex') === message.relay && self.hashes.has(message.hash) && self.relays.has(message.relay) && socket.relays.includes(message.relay)){
-          const check = self.relays.get(message.relay)
-          const i = check.findIndex((data) => {return socket.id === data.id})
-          if(self.serverConnections && check.length >= self.serverConnections && i !== -1){
-            return
+          if(socket.server){
+            if(self.serverConnections && self.relays.get(message.relay).length >= self.serverConnections){
+              self.extraData(message)
+              socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: message.relay, status: self.status, action: 'extra', reply: false}))
+              socket.close()
+              // send id data and then close
+            } else {
+              self.socketData(socket, message)
+              socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'session', reply: false}))
+              if(self.dataTrackers.has(socket.id)){
+                self.dataTrackers.get(socket.id).close()
+              }
+              // same
+            }
           } else {
-            socket.relays.push(message.relay)
-            check.push(socket)
+            self.socketData(socket, message)
+            if(self.dataTrackers.has(socket.id)){
+              self.dataTrackers.get(socket.id).close()
+            }
+            // same
           }
         }
-      }
-      if(message.action === 'sub'){
-        if(crypto.createHash('sha1').update(message.hash).digest('hex') === message.relay && self.hashes.has(message.hash) && self.relays.has(message.relay) && socket.relays.includes(message.relay)){
+        if(message.action === 'extra'){
+          if(!self.relays.has(message.relay)){
+            socket.close()
+          }
+          self.extraData(message)
+          if(message.reply){
+            socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: message.relay, status: self.status, action: 'extra', reply: false}))
+          }
+          socket.close()
+        }
+        if(message.action === 'add'){
+          if(!self.relays.has(message.relay)){
+            socket.close()
+            return
+          }
           const check = self.relays.get(message.relay)
-          const i = check.findIndex((data) => {return socket.id === data.id})
-          if(i === -1){
+          if(self.serverConnections && check.length >= self.serverConnections){
             return
           } else {
-            socket.relays.splice(socket.relays.indexOf(message.relay), 1)
-            check.splice(check.indexOf(message.relay), 1)
+            const i = check.findIndex((data) => {return socket.id === data.id})
+            if(i === -1){
+              if(!socket.relays.includes(message.relay)){
+                socket.relays.push(message.relay)
+              }
+              check.push(socket)
+            }
+          }
+        }
+        if(message.action === 'sub'){
+          if(!self.relays.has(message.relay)){
+            socket.close()
+            return
+          }
+          const i = check.findIndex((data) => {return socket.id === data.id})
+          if(i !== -1){
+            if(socket.relays.includes(message.relay)){
+              socket.relays.splice(socket.relays.indexOf(message.relay), 1)
+            }
+            check.splice(i, 1)
           }
           if(!socket.relays.length){
             socket.close()
           }
         }
-      }
-      if(message.action === 'ping'){
-        socket.send(JSON.stringify({action: 'pong'}))
-      }
-      if(message.action === 'pong'){
-        socket.active = true
+        if(message.action === 'ping'){
+          socket.send(JSON.stringify({action: 'pong'}))
+        }
+        if(message.action === 'pong'){
+          socket.active = true
+        }
+      } catch (error) {
+        self.emit('ev', socket.id || 'socket' + ' had an error, will wait and try to connect later, ' + error.message)
+        socket.close()
       }
     }
     socket.onClose = function(code, reason){
-      socket.off('open', socket.onOpen)
-      socket.off('error', socket.onError)
-      socket.off('message', socket.onMessage)
-      socket.off('close', socket.onClose)
+      socket.handleListeners()
+      self.serverCount = self.serverCount - 1
 
       if(socket.id){
         self.trackers.delete(socket.id)
@@ -1041,11 +1075,20 @@ class Server extends EventEmitter {
             if(i !== -1){
               check.splice(i, 1)
             }
+            // if(!check.length){
+            //   self.runTheRelay(relay)
+            // }
           }
         }
       }
 
-      self.emit('ev', {code, reason: reason.toString()})
+      self.emit('ev', code + ': ' + reason.toString())
+    }
+    socket.handleListeners = () => {
+      socket.off('open', socket.onOpen)
+      socket.off('error', socket.onError)
+      socket.off('message', socket.onMessage)
+      socket.off('close', socket.onClose)
     }
     socket.on('open', socket.onOpen)
     socket.on('error', socket.onError)
@@ -1054,6 +1097,7 @@ class Server extends EventEmitter {
   }
 
   onWebSocketConnection (socket, opts = {}) {
+    this.clientCount = this.clientCount + 1
     opts.trustProxy = opts.trustProxy || this._trustProxy
 
     socket.peerId = null // as hex
@@ -1100,7 +1144,9 @@ class Server extends EventEmitter {
         socket.send(JSON.stringify({
           action: params.action === common.ACTIONS.ANNOUNCE ? 'announce' : 'scrape',
           'failure reason': err.message,
-          info_hash: hex2bin(params.info_hash)
+          info_hash: hex2bin(params.info_hash),
+          relay: params.relay,
+          extra: params.extra
         }), socket.onSend)
 
         this.emit('warning', err)
@@ -1191,6 +1237,7 @@ class Server extends EventEmitter {
   _onWebSocketClose (socket) {
     debug('websocket close %s', socket.peerId)
     socket.destroyed = true
+    this.clientCount = this.clientCount - 1
 
     if (socket.peerId) {
       socket.infoHashes.slice(0).forEach(infoHash => {
@@ -1239,7 +1286,45 @@ class Server extends EventEmitter {
     if (params && params.action === common.ACTIONS.CONNECT) {
       cb(null, { action: common.ACTIONS.CONNECT })
     } else if (params && params.action === common.ACTIONS.ANNOUNCE) {
-      this._onAnnounce(params, cb)
+      if(this.refreshConnections && this.clientCount >= this.refreshConnections){
+        const relay = crypto.createHash('sha1').update(params.info_hash).digest('hex')
+        const checkHas = this.relays.has(relay)
+        const checkExtra = this.dataRelays.has(relay)
+        if(checkHas){
+          const checkGet = this.relays.get(relay)
+          params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce : null
+        } else {
+          params.relay = null
+        }
+        if(checkExtra){
+          const extraGet = this.dataRelays.get(relay)
+          params.extra = extraGet.length ? extraGet[Math.floor(Math.random() * extraGet.length)].announce : null
+        } else {
+          params.extra = null
+        }
+        this.turnOffHTTP()
+        cb(new Error('Refreshing'))
+      } else if(this.clientConnections && this.clientCount >= this.clientConnections){
+        const relay = crypto.createHash('sha1').update(hash).digest('hex')
+        const checkHas = this.relays.has(relay)
+        const checkExtra = this.dataRelays.has(relay)
+        if(checkHas){
+          const checkGet = this.relays.get(relay)
+          params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce : null
+        } else {
+          params.relay = null
+        }
+        if(checkExtra){
+          const extraGet = this.dataRelays.get(relay)
+          params.extra = extraGet.length ? extraGet[Math.floor(Math.random() * extraGet.length)].announce : null
+        } else {
+          params.extra = null
+        }
+        cb(new Error('Relaying'))
+      } else {
+        params.relay = null
+        this._onAnnounce(params, cb)
+      }
     } else if (params && params.action === common.ACTIONS.SCRAPE) {
       this._onScrape(params, cb)
     } else {
@@ -1343,6 +1428,70 @@ class Server extends EventEmitter {
 
       cb(null, response)
     })
+  }
+  extraData(message){
+    if(this.dataTrackers.has(message.id)){
+      const checkExtra = this.dataTrackers.get(message.id)
+      checkExtra.check.stamp = Date.now()
+      checkExtra.check.wait = checkExtra.check.wait * 2
+      if(!checkExtra.relays.includes(message.relay)){
+        checkExtra.relays.push(message.relay)
+      }
+      const checkRel = this.dataRelays.get(message.relay)
+      const i = checkRel.findIndex((data) => {return checkExtra.id === data.id})
+      if(i === -1){
+        checkRel.push(checkExtra)
+      }
+    } else {
+      const obj = {}
+      for(const i in message){
+        obj[i] = message[i]
+      }
+      obj.relays = []
+      if(!obj.relays.includes(obj.relay)){
+        obj.relays.push(obj.relay)
+      }
+      obj.relay = message.web + '/relay'
+      obj.announce = message.web + '/announce'
+      obj.check = {stamp: Date.now(), wait: 1}
+  
+      obj.close = () => {
+        if(this.dataTrackers.has(obj.id)){
+          this.dataTrackers.delete(obj.id)
+        }
+        obj.relays.forEach((data) => {
+          if(this.dataRelays.has(data)){
+            const check = this.dataRelays.get(data)
+            check.forEach((found, i) => {
+              if(found.id === obj.id){
+                check.splice(i, 1)
+              }
+            })
+          }
+        })
+      }
+      this.dataTrackers.set(obj.id, obj)
+      this.dataRelays.get(message.relay).push(obj)
+    }
+  }
+  socketData(soc, mes){
+    soc.status = mes.status
+    soc.key = mes.key
+    soc.domain = mes.domain
+    soc.tracker = mes.tracker
+    soc.port = mes.port
+    soc.host = mes.host
+    soc.web = mes.web
+    soc.dht = mes.dht
+    soc.address = mes.address
+    soc.hostPort = mes.hostPort
+    soc.relay = mes.web + '/relay'
+    soc.announce = mes.web + '/announce'
+    if(!soc.relays.includes(mes.relay)){
+      soc.relays.push(mes.relay)
+    }
+    this.trackers.set(soc.id, soc)
+    this.relays.get(mes.relay).push(soc)
   }
 }
 
