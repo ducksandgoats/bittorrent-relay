@@ -43,7 +43,8 @@ const argv = minimist(process.argv.slice(2), {
     'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3',
     'key': null,
     'index': null,
-    'init': true
+    'init': true,
+    'ev': false
   }
 })
 
@@ -110,9 +111,11 @@ server.on('listening', (which) => {
   console.log('listening', which)
 })
 
-server.on('ev', (e) => {
-  console.log(e)
-})
+if(argv['ev']){
+  server.on('ev', (e) => {
+    console.log(e)
+  })
+}
 
 server.on('error', (err) => {
   console.error('close', err)
