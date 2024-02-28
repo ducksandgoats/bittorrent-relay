@@ -39,7 +39,7 @@ const argv = minimist(process.argv.slice(2), {
     'domain': '',
     'trust-proxy': null,
     'auth': null,
-    'dir': path.join(process.cwd(), 'dir'),
+    'dir': path.join(process.cwd(), 'data'),
     'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3',
     'key': null,
     'index': null,

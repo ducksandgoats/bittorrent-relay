@@ -108,11 +108,17 @@ class Server extends EventEmitter {
     this.dataTrackers = new Map()
     this.dataRelays = new Map()
 
+    if(opts.dir){
+      if(!fs.existsSync(opts.dir)){
+        fs.mkdirSync(opts.dir)
+      }
+    }
     this.dir = path.join(opts.dir || __dirname, 'dir')
-    this.index = Boolean(opts.index)
     if(!fs.existsSync(this.dir)){
       fs.mkdirSync(this.dir)
     }
+    
+    this.index = Boolean(opts.index)
     if(this.index === true){
       fs.writeFileSync(path.join(this.dir, 'index.html'), '<html><head><title>Relay</title></head><body><h1>Relay</h1><p>Relay</p></body></html>')
     } else if(this.index === false){
