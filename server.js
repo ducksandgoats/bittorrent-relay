@@ -44,7 +44,7 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  * @param {Object|Boolean}  opts.user    user data like public key and private key
  * @param {Boolean} opts.stats          enable web-based statistics?
  * @param {Object} opts.limit       limit the connections of the relay and the hashes
- * @param {Boolean} opts.data      enable routes to share internal data to users
+ * @param {Boolean} opts.tracks      enable routes to share internal data to users
  * @param {Boolean} opts.status          accept only the hashes from the hashes array in the hashes option
  * @param {Boolean|String}  opts.index    serve an html file when the request is to /
  * @param {Boolean|String}  opts.peersCacheLength    max amount of elements in cache, default is 1000
@@ -64,7 +64,7 @@ class Server extends EventEmitter {
     const self = this
     
     this.stats = opts.stats
-    this.data = opts.data
+    this.tracks = opts.tracks
     this.limit = typeof(opts.limit) === 'object' && !Array.isArray(opts.limit) ? opts.limit : {}
     this.timer = typeof(opts.timer) === 'object' && !Array.isArray(opts.timer) ? opts.timer : {}
     this.serverConnections = this.limit.serverConnections || 0
@@ -386,23 +386,23 @@ class Server extends EventEmitter {
             ${printClients(stats.clients)}
           `.replace(/^\s+/gm, '')) // trim left
   
-        } else if(req.method === 'GET' && req.url === '/addresses.json' && this.data){
+        } else if(req.method === 'GET' && req.url === '/addresses.json' && this.tracks){
           const arr = []
           for(const i in self.trackers.values()){
             arr.push(i.address)
           }
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(arr))
-        } else if(req.method === 'GET' && req.url === '/ids.json' && this.data){
+        } else if(req.method === 'GET' && req.url === '/ids.json' && this.tracks){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(Array.from(self.trackers.keys())))
-        } else if(req.method === 'GET' && req.url === '/hashes.json' && this.data){
+        } else if(req.method === 'GET' && req.url === '/hashes.json' && this.tracks){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(Array.from(this.hashes)))
-        } else if(req.method === 'GET' && req.url === '/relays.json' && this.data){
+        } else if(req.method === 'GET' && req.url === '/relays.json' && this.tracks){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(Array.from(self.relays.keys())))
-        } else if(req.method === 'GET' && req.url === '/keys.json' && this.data){
+        } else if(req.method === 'GET' && req.url === '/keys.json' && this.tracks){
           const arr = []
           for(const i in self.trackers.values()){
             arr.push(i.key)
