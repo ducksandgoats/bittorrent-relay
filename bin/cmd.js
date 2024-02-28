@@ -44,7 +44,9 @@ const argv = minimist(process.argv.slice(2), {
     'key': null,
     'index': null,
     'init': true,
-    'ev': false
+    'ev': false,
+    'stats': true,
+    'tracks': true
   }
 })
 
@@ -109,7 +111,9 @@ const server = new Server({
   hashes: argv['hashes'].split(',').filter(Boolean),
   key: argv['key'],
   index: argv['index'],
-  init: argv['init']
+  init: argv['init'],
+  stats: argv['stats'],
+  tracks: argv['tracks']
 })
 
 server.on('listening', (which) => {
