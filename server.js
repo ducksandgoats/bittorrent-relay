@@ -78,7 +78,9 @@ class Server extends EventEmitter {
 
     this.dir = path.join(opts.dir || __dirname, 'dir')
     this.index = Boolean(opts.index)
-    fs.mkdirSync(this.dir)
+    if(!fs.existsSync(this.dir)){
+      fs.mkdirSync(this.dir)
+    }
     if(this.index === true){
       fs.writeFileSync(path.join(this.dir, 'index.html'), '<html><head><title>Relay</title></head><body><h1>Relay</h1><p>Relay</p></body></html>')
     } else if(this.index === false){
@@ -96,22 +98,25 @@ class Server extends EventEmitter {
 
     this.auth = opts.auth || null
     this.user = opts.user || null
+    if(!fs.existsSync(path.join(this.dir, 'user'))){
+      fs.mkdirSync(path.join(this.dir, 'user'))
+    }
     if(this.user === true){
       const text = 'created key data, check ' + path.join(this.dir, 'user') + ' for new key data, temp.txt will be deleted in 5 minutes'
-      const {data} = saveKey(text)
+      const {data} = this.saveKey(text)
       this.user = data
     } else if(this.user === false){
       const text = 'key data is missing so new key data was created, check ' + path.join(this.dir, 'user') + ' for new key data, temp.txt will be deleted in 5 minutes'
       if(fs.existsSync(path.join(this.dir, 'user', 'user.txt'))){
         const check = JSON.parse(fs.readFileSync(path.join(this.dir, 'user', 'user.txt')).toString())
         if(!check.pub || !check.sig || !check.msg){
-          const {data} = saveKey(text)
+          const {data} = this.saveKey(text)
           this.user = data
         } else {
           this.user = check
         }
       } else {
-        const {data} = saveKey(text)
+        const {data} = this.saveKey(text)
         this.user = data
       }
     } else {
@@ -130,7 +135,7 @@ class Server extends EventEmitter {
       } catch (error) {
         console.error(error)
         const text = 'key data given is bad, check ' + path.join(this.dir, 'user') + ' for new key data, temp.txt will be deleted in 5 minutes'
-        const {data} = saveKey(text)
+        const {data} = this.saveKey(text)
         this.user = data
       }
     }
@@ -806,7 +811,7 @@ class Server extends EventEmitter {
   }
 
   saveKey(e){
-    const useCheck = genKey()
+    const useCheck = this.genKey()
     fs.writeFileSync(path.join(this.dir, 'user', 'user.txt'), JSON.stringify(useCheck.data))
     fs.writeFileSync(path.join(this.dir, 'user', 'temp.txt'), JSON.stringify(useCheck.temp))
     setTimeout(() => {fs.rmSync(path.join(this.dir, 'user', 'temp.txt'), {force: true})}, 300000)

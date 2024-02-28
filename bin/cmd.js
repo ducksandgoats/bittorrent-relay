@@ -42,7 +42,8 @@ const argv = minimist(process.argv.slice(2), {
     'dir': path.join(process.cwd(), 'dir'),
     'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3',
     'key': null,
-    'index': null
+    'index': null,
+    'init': true
   }
 })
 
@@ -101,7 +102,8 @@ const server = new Server({
   port: argv['port'],
   hashes: argv['hashes'].split(',').filter(Boolean),
   key: argv['key'],
-  index: argv['index']
+  index: argv['index'],
+  init: argv['init']
 })
 
 server.on('listening', (which) => {
@@ -112,14 +114,10 @@ server.on('ev', (e) => {
   console.log(e)
 })
 
-server.on('error', (which, err) => {
-  console.error('close', which, err)
+server.on('error', (err) => {
+  console.error('close', err)
 })
 
 server.on('close', (which) => {
   console.log('close', which)
-})
-
-server.turnOn(() => {
-  console.log('turned on')
 })
