@@ -75,6 +75,38 @@ class Server extends EventEmitter {
     this.activity = this.timer.activity || 5 * 60 * 1000
     this.clientCount = 0
     this.serverCount = 0
+    this.listening = false
+    this.intervalMs = this.timer.interval ? this.timer.interval : 10 * 60 * 1000
+    this.peersCacheLength = opts.peersCacheLength
+    this.peersCacheTtl = opts.peersCacheTtl
+    this.destroyed = false
+    this.torrents = {}
+    this.http = null
+    this.ws = null
+    this.domain = opts.domain || null
+    this.inactive = this.timer.inactive || 1 * 60 * 1000
+    this.active = this.timer.active || 5 * 60 * 1000
+    this.DHTPORT = opts.dhtPort || 16881
+    this.TRACKERPORT = opts.trackerPort || 16969
+    this.DHTHOST = opts.dhtHost || '0.0.0.0'
+    this.TRACKERHOST = opts.trackerHost || '0.0.0.0'
+    this.host = opts.host
+    if(!this.host || this.host.includes('0.0.0.0') || this.host.includes('localhost') || this.host.includes('127.0.0.1')){
+      throw new Error('must have host')
+    }
+    this.port = opts.port || this.TRACKERPORT
+    this.hostPort = `${this.host}:${this.port}`
+    this.address = crypto.createHash('sha1').update(this.hostPort).digest('hex')
+    this._trustProxy = Boolean(opts.trustProxy)
+    this.dht = {host: this.DHTHOST, port: this.DHTPORT}
+    this.tracker = {host: this.TRACKERHOST, port: this.TRACKERPORT}
+    this.id = crypto.createHash('sha1').update(this.host + ':' + this.port).digest('hex')
+    this.web = `ws://${this.domain || this.host}:${this.port}`
+    this.trackers = new Map()
+    this.triedAlready = new Map()
+    this.status = opts.status || null
+    this.dataTrackers = new Map()
+    this.dataRelays = new Map()
 
     this.dir = path.join(opts.dir || __dirname, 'dir')
     this.index = Boolean(opts.index)
@@ -141,36 +173,6 @@ class Server extends EventEmitter {
     }
     this.key = this.user.pub
 
-    this.listening = false
-    this.intervalMs = this.timer.interval ? this.timer.interval : 10 * 60 * 1000
-    this.peersCacheLength = opts.peersCacheLength
-    this.peersCacheTtl = opts.peersCacheTtl
-    this.destroyed = false
-    this.torrents = {}
-    this.http = null
-    this.ws = null
-    this.domain = opts.domain || null
-    this.inactive = this.timer.inactive || 1 * 60 * 1000
-    this.active = this.timer.active || 5 * 60 * 1000
-    this.DHTPORT = opts.dhtPort || 16881
-    this.TRACKERPORT = opts.trackerPort || 16969
-    this.DHTHOST = opts.dhtHost || '0.0.0.0'
-    this.TRACKERHOST = opts.trackerHost || '0.0.0.0'
-    this.host = opts.host
-    if(!this.host || this.host.includes('0.0.0.0') || this.host.includes('localhost') || this.host.includes('127.0.0.1')){
-      throw new Error('must have host')
-    }
-    this.port = opts.port || this.TRACKERPORT
-    this.hostPort = `${this.host}:${this.port}`
-    this.address = crypto.createHash('sha1').update(this.hostPort).digest('hex')
-    this._trustProxy = Boolean(opts.trustProxy)
-    this.dht = {host: this.DHTHOST, port: this.DHTPORT}
-    this.tracker = {host: this.TRACKERHOST, port: this.TRACKERPORT}
-    this.id = crypto.createHash('sha1').update(this.host + ':' + this.port).digest('hex')
-    this.web = `ws://${this.domain || this.host}:${this.port}`
-    this.trackers = new Map()
-    this.triedAlready = new Map()
-    this.status = opts.status || null
     this.hashes = new Set((typeof(opts.hashes) === 'object' && Array.isArray(opts.hashes)) ? opts.hashes : typeof(opts.hashes) === 'string' ? opts.hashes.split(',').filter(Boolean) : [])
     fs.writeFile(path.join(this.dir, 'hashes.txt'), JSON.stringify(Array.from(this.hashes)), {}, (err) => {
       if(err){
@@ -187,8 +189,6 @@ class Server extends EventEmitter {
         this.emit('ev', 'saved relays')
       }
     })
-    this.dataTrackers = new Map()
-    this.dataRelays = new Map()
     
     this.http = http.createServer()
     this.http.onError = (err) => {
