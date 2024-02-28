@@ -120,17 +120,8 @@ class Server extends EventEmitter {
     
     this.index = Boolean(opts.index)
     if(this.index === true){
-      fs.writeFileSync(path.join(this.dir, 'index.html'), '<html><head><title>Relay</title></head><body><h1>Relay</h1><p>Relay</p></body></html>')
-    } else if(this.index === false){
-      fs.rmSync(path.join(this.dir, 'index.html'), {force: true})
-    } else {
-      try {
-        fs.writeFileSync(path.join(this.dir, 'index.html'), fs.readFileSync(this.index).toString('utf-8'))
-        this.index = true
-      } catch (error) {
-        console.error(error)
-        fs.rmSync(path.join(this.dir, 'index.html'))
-        this.index = false
+      if(!fs.existsSync(path.join(this.dir, 'index.html'))){
+        fs.writeFileSync(path.join(this.dir, 'index.html'), '<html><head><title>Relay</title></head><body><h1>Relay</h1><p>Relay</p></body></html>')
       }
     }
 
@@ -286,14 +277,14 @@ class Server extends EventEmitter {
       }
 
       try {
-        if(req.url === '/' && req.method === 'HEAD'){
+        if(req.method === 'HEAD' && req.url === '/'){
           res.statusCode = 200
           res.end()
-        } else if(req.url === '/' && req.method === 'GET'){
+        } else if(req.method === 'GET' && req.url === '/'){
           res.statusCode = 200
           res.setHeader('Content-Type', 'text/plain')
           res.end('thanks for testing bittorrent-relay')
-        } else if(req.url === '/index.html' && req.method === 'GET' && this.index){
+        } else if(req.method === 'GET' && req.url === '/index.html' && this.index){
           res.statusCode = 200
           res.setHeader('Content-Type', 'text/html')
           let useText = ''
@@ -318,7 +309,7 @@ class Server extends EventEmitter {
           useStream.on('error', useError)
           useStream.on('data', useData)
           useStream.on('close', useClose)
-        } else if(req.url === '/stats.html' && req.method === 'GET' && this.stats){
+        } else if(req.method === 'GET' && req.url === '/stats.html' && this.stats){
           infoHashes.forEach(infoHash => {
             const peers = self.torrents[infoHash].peers
             const keys = peers.keys
