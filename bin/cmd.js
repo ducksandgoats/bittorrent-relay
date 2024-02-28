@@ -40,7 +40,7 @@ const argv = minimist(process.argv.slice(2), {
     'trust-proxy': null,
     'auth': null,
     'dir': path.join(process.cwd(), 'data'),
-    'hashes': 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3',
+    'hashes': '',
     'key': null,
     'index': null,
     'init': true,
@@ -85,6 +85,11 @@ if (argv.help) {
 
 if(!fs.existsSync(argv['dir'])){
   fs.mkdirSync(argv['dir'], {recursive: true})
+}
+
+if(!argv['hashes']){
+  console.error('must have at least 1 hash')
+  process.exit(undefined)
 }
 
 const server = new Server({
