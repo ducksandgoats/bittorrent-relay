@@ -697,17 +697,17 @@ class Server extends EventEmitter {
         return
       }
 
+      const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
+      if(self.id === id){
+        return
+      }
+
       if(this.triedAlready.has(id)){
         const check = this.triedAlready.get(id)
         const checkStamp =  (Date.now() - check.stamp) / 1000
         if(check.wait >= checkStamp){
           return
         }
-      }
-
-      const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
-      if(self.id === id){
-        return
       }
 
       if(this.trackers.has(id)){
