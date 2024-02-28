@@ -400,6 +400,16 @@ class Server extends EventEmitter {
           }
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(arr))
+        } else if(req.method === 'GET' && req.url === '/extra-ids.json' && this.tracks){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(Array.from(self.dataTrackers.keys())))
+        } else if(req.method === 'GET' && req.url === '/extra-keys.json' && this.tracks){
+          const arr = []
+          for(const i in self.dataRelays.values()){
+            arr.push(i.key)
+          }
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(arr))
         } else if(req.method === 'GET' && req.url === '/index.json'){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify('thanks for using bittorrent-relay'))
