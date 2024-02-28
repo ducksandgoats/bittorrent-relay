@@ -962,7 +962,7 @@ class Server extends EventEmitter {
           check.stamp = Date.now()
           check.wait = check.wait * 2
         } else {
-          check = {stamp: Date.now(), wait: 1}
+          self.triedAlready.set(socket.id, {stamp: Date.now(), wait: 1})
         }
       } else {
         useSocket = 'socket'
