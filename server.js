@@ -699,8 +699,9 @@ class Server extends EventEmitter {
       // if not connected, then connect socket
       // share resource details on websocket
       // this.tracker[infoHash][ws-link]
+      const ih = infoHash.toString('hex')
 
-      if(this.status && !this.relays.has(infoHash)){
+      if(this.status && !this.relays.has(ih)){
         return
       }
 
@@ -718,16 +719,16 @@ class Server extends EventEmitter {
       }
 
       if(this.trackers.has(id)){
-        const checkRelay = this.relays.get(infoHash)
+        const checkRelay = this.relays.get(ih)
         if(this.serverConnections && checkRelay.length < this.serverConnections){
           const checkTracker = this.trackers.get(id)
           const i = checkRelay.findIndex((data) => {return checkTracker.id === data.id})
           if(i === -1){
             checkRelay.push(checkTracker)
-            if(!checkTracker.relays.includes(infoHash)){
-              checkTracker.relays.push(infoHash)
+            if(!checkTracker.relays.includes(ih)){
+              checkTracker.relays.push(ih)
             }
-            checkTracker.send(JSON.stringify({action: 'add', relay: infoHash, reply: false}))
+            checkTracker.send(JSON.stringify({action: 'add', relay: ih, reply: false}))
           }
         }
         return
@@ -745,7 +746,7 @@ class Server extends EventEmitter {
       const con = new WebSocket(relay)
       con.server = false
       con.active = true
-      con.relays = [infoHash]
+      con.relays = [ih]
       con.proc = false
       con.id = id
       self.onRelaySocketConnection(con)
