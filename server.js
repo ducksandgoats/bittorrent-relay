@@ -949,9 +949,9 @@ class Server extends EventEmitter {
       }
       if(!socket.server){
         if(this.serverConnections && this.relays.get(socket.relays[0]).length >= this.serverConnections){
-          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'extra', reply: true}))
+          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'extra', reply: true}))
         } else {
-          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'session', reply: true}))
+          socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'session', reply: true}))
         }
       }
     }
@@ -998,12 +998,12 @@ class Server extends EventEmitter {
           if(socket.server){
             if(self.serverConnections && self.relays.get(message.relay).length >= self.serverConnections){
               self.extraData(message)
-              socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: message.relay, status: self.status, action: 'extra', reply: false}))
+              socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: message.relay, status: self.status, action: 'extra', reply: false}))
               socket.close()
               // send id data and then close
             } else {
               self.socketData(socket, message)
-              socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'session', reply: false}))
+              socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relays[0], status: self.status, action: 'session', reply: false}))
               if(self.dataTrackers.has(socket.id)){
                 self.dataTrackers.get(socket.id).close()
               }
@@ -1023,7 +1023,7 @@ class Server extends EventEmitter {
           }
           self.extraData(message)
           if(message.reply){
-            socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, tracker: self.tracker, web: self.web, host: self.host, port: self.port, dht: self.dht, domain: self.domain, relay: message.relay, status: self.status, action: 'extra', reply: false}))
+            socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, hostPort: self.hostPort, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: message.relay, status: self.status, action: 'extra', reply: false}))
           }
           socket.close()
         }
