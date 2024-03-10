@@ -190,9 +190,13 @@ class Server extends EventEmitter {
     this.http.onRequest = (req, res) => {
       // if (res.headersSent) return
 
-      if(req.url.startsWith('/announce')){
+      if(req.url.startsWith('/announce/')){
+        // const useQueryString = req.url.replace('/announce/', '').slice(0, req.url.indexOf('?'))
+        // if(!this.hashes.has(useQueryString)){}
         this.onHttpRequest(req, res)
-      } else if(req.url.startsWith('/relay')){
+      } else if(req.url.startsWith('/relay/')){
+        // const useQueryString = req.url.replace('/relay/', '').slice(0, req.url.indexOf('?'))
+        // if(!this.relays.has(useQueryString)){}
         res.setHeader('Content-Type', 'text/plain; charset=UTF-8')
         res.end('relay')
       } else {
