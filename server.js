@@ -69,16 +69,16 @@ class Server extends EventEmitter {
     this.tracks = opts.tracks
     this.limit = typeof(opts.limit) === 'object' && !Array.isArray(opts.limit) ? opts.limit : {}
     this.timer = typeof(opts.timer) === 'object' && !Array.isArray(opts.timer) ? opts.timer : {}
-    this.serverConnections = this.limit.serverConnections || 0
-    this.clientConnections = this.limit.clientConnections || 0
-    this.refreshConnections = this.clientConnections ? this.clientConnections + (this.limit.refresh ? this.limit.refreshConnections || 1000 : 1000) : 0
-    this.refreshLimit = this.limit.refreshLimit || 0
-    this.clientOrRefresh = Boolean(this.limit.clientOrRefresh)
-    this.activity = this.timer.activity || 5 * 60 * 1000
+    this.limit.serverConnections = this.limit.serverConnections || 0
+    this.limit.clientConnections = this.limit.clientConnections || 0
+    this.limit.refreshConnections = this.limit.clientConnections ? this.limit.clientConnections + (this.limit.refresh ? this.limit.refreshConnections || 1000 : 1000) : 0
+    this.limit.refreshLimit = this.limit.refreshLimit || 0
+    this.limit.clientOrRefresh = Boolean(this.limit.clientOrRefresh)
+    this.timer.activity = this.timer.activity || 5 * 60 * 1000
     this.clientCount = 0
     this.serverCount = 0
     this.listening = false
-    this.intervalMs = this.timer.interval ? this.timer.interval : 10 * 60 * 1000
+    this.timer.interval = this.timer.interval ? this.timer.interval : 10 * 60 * 1000
     this.peersCacheLength = opts.peersCacheLength
     this.peersCacheTtl = opts.peersCacheTtl
     this.destroyed = false
@@ -86,8 +86,8 @@ class Server extends EventEmitter {
     this.http = null
     this.ws = null
     this.domain = opts.domain || null
-    this.inactive = this.timer.inactive || 1 * 60 * 1000
-    this.active = this.timer.active || 5 * 60 * 1000
+    this.timer.inactive = this.timer.inactive || 1 * 60 * 1000
+    this.timer.active = this.timer.active || 5 * 60 * 1000
     this.DHTPORT = opts.dhtPort || 16881
     this.TRACKERPORT = opts.trackerPort || 16969
     this.DHTHOST = opts.dhtHost || '0.0.0.0'
@@ -105,9 +105,7 @@ class Server extends EventEmitter {
     this.web = {http: `http://${this.domain || this.host}:${this.port}`, ws: `ws://${this.domain || this.host}:${this.port}`}
     this.trackers = new Map()
     this.triedAlready = new Map()
-    this.status = opts.status || null
-    this.dataTrackers = new Map()
-    this.dataRelays = new Map()
+    this.status = Boolean(opts.status)
 
     if(opts.dir){
       if(!fs.existsSync(opts.dir)){
@@ -172,17 +170,17 @@ class Server extends EventEmitter {
       //   }
       // }
       self.trackers.forEach((data) => {data.send(JSON.stringify({action: 'on'}))})
-      if(self.refreshConnections){
+      if(self.limit.refreshConnections){
         if(self.refresh){
           clearInterval(self.refresh)
         }
         self.refresh = setInterval(() => {
-          if(self.refreshConnections){
-            if(self.clientCount >= self.refreshConnections){
+          if(self.limit.refreshConnections){
+            if(self.clientCount >= self.limit.refreshConnections){
               self.turnOffHTTP()
             }
           }
-        }, this.activity)
+        }, this.timer.activity)
       }
 
       self.talkToRelay()
@@ -535,15 +533,15 @@ class Server extends EventEmitter {
       })
       this.triedAlready.clear()
 
-      if(self.refreshConnections){
+      if(self.limit.refreshConnections){
         if(self.refresh){
           clearInterval(self.refresh)
         }
         self.refresh = setInterval(() => {
-          const check = self.clientOrRefresh ? self.refreshConnections : self.clientConnections
+          const check = self.limit.clientOrRefresh ? self.limit.refreshConnections : self.limit.clientConnections
           if(self.clientCount <= check){
-            if(self.refreshLimit){
-              if(self.clientCount <= self.refreshLimit){
+            if(self.limit.refreshLimit){
+              if(self.clientCount <= self.limit.refreshLimit){
                 self.turnWeb()
                 self.turnOnHTTP()
               }
@@ -552,7 +550,7 @@ class Server extends EventEmitter {
               self.turnOnHTTP()
             }
           }
-        }, this.activity)
+        }, this.timer.activity)
       }
 
       this.listening = false
@@ -602,8 +600,8 @@ class Server extends EventEmitter {
           socket.close()
           return
         }
-        if(this.serverConnections){
-          if(this.relays.get(useTest).length < this.serverConnections){
+        if(this.limit.serverConnections){
+          if(this.relays.get(useTest).length < this.limit.serverConnections){
             socket.hash = null
             socket.server = true
             socket.active = true
@@ -696,8 +694,8 @@ class Server extends EventEmitter {
         return
       }
 
-      if(this.serverConnections){
-        if(this.relays.get(ih).length < this.serverConnections){
+      if(this.limit.serverConnections){
+        if(this.relays.get(ih).length < this.limit.serverConnections){
           const relay = `ws://${peer.host}:${peer.port}/relay/${ih}`
           const con = new WebSocket(relay)
           con.server = false
@@ -796,7 +794,7 @@ class Server extends EventEmitter {
 
   talkToRelay(){
     for(const test of this.relays.keys()){
-      if(this.serverConnections && this.relays.get(test).length >= this.serverConnections){
+      if(this.limit.serverConnections && this.relays.get(test).length >= this.limit.serverConnections){
         continue
       } else {
         this.relay.lookup(test, (err, num) => {
@@ -844,7 +842,7 @@ class Server extends EventEmitter {
     this.talkToRelay()
     this.intervalRelay = setInterval(() => {
       this.talkToRelay()
-    }, this.active)
+    }, this.timer.active)
 
     this.intervalActive = setInterval(() => {
       for(const test in this.trackers.values()){
@@ -855,7 +853,7 @@ class Server extends EventEmitter {
         test.active = false
         test.send(JSON.stringify({action: 'ping'}))
       }
-    }, this.inactive)
+    }, this.timer.inactive)
     if(cb){
       cb()
     }
@@ -876,8 +874,6 @@ class Server extends EventEmitter {
     clearInterval(this.intervalActive)
     this.trackers.clear()
     this.relays.clear()
-    this.dataTrackers.clear()
-    this.dataRelays.clear()
     this.hashes.clear()
     if(cb){
       cb()
@@ -1176,7 +1172,7 @@ class Server extends EventEmitter {
         response.info_hash = hex2bin(params.info_hash)
 
         // WebSocket tracker should have a shorter interval – default: 2 minutes
-        response.interval = Math.ceil(this.intervalMs / 1000 / 5)
+        response.interval = Math.ceil(this.timer.interval / 1000 / 5)
       }
 
       // Skip sending update back for 'answer' announce messages – not needed
@@ -1295,7 +1291,7 @@ class Server extends EventEmitter {
     if (params && params.action === common.ACTIONS.CONNECT) {
       cb(null, { action: common.ACTIONS.CONNECT })
     } else if (params && params.action === common.ACTIONS.ANNOUNCE) {
-      if(this.refreshConnections && this.clientCount >= this.refreshConnections){
+      if(this.limit.refreshConnections && this.clientCount >= this.limit.refreshConnections){
         const relay = crypto.createHash('sha1').update(params.info_hash).digest('hex')
         const checkHas = this.relays.has(relay)
         if(checkHas){
@@ -1306,7 +1302,7 @@ class Server extends EventEmitter {
         }
         this.turnOffHTTP()
         cb(new Error('Refreshing'))
-      } else if(this.clientConnections && this.clientCount >= this.clientConnections){
+      } else if(this.limit.clientConnections && this.clientCount >= this.limit.clientConnections){
         const relay = crypto.createHash('sha1').update(hash).digest('hex')
         const checkHas = this.relays.has(relay)
         if(checkHas){
@@ -1353,7 +1349,7 @@ class Server extends EventEmitter {
         if (err) return cb(err)
 
         if (!response.action) response.action = common.ACTIONS.ANNOUNCE
-        if (!response.interval) response.interval = Math.ceil(self.intervalMs / 1000)
+        if (!response.interval) response.interval = Math.ceil(this.timer.interval / 1000)
 
         if (params.compact === 1) {
           const peers = response.peers
@@ -1405,7 +1401,7 @@ class Server extends EventEmitter {
       const response = {
         action: common.ACTIONS.SCRAPE,
         files: {},
-        flags: { min_request_interval: Math.ceil(this.intervalMs / 1000) }
+        flags: { min_request_interval: Math.ceil(this.timer.interval / 1000) }
       }
 
       results.forEach(result => {
