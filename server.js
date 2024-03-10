@@ -1296,7 +1296,7 @@ class Server extends EventEmitter {
         const checkHas = this.relays.has(relay)
         if(checkHas){
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
-          params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce : null
+          params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce + params.info_hash : ''
         } else {
           params.relay = null
         }
@@ -1307,7 +1307,7 @@ class Server extends EventEmitter {
         const checkHas = this.relays.has(relay)
         if(checkHas){
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
-          params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce : null
+          params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce + params.info_hash : ''
         } else {
           params.relay = null
         }
