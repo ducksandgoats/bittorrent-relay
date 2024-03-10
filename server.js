@@ -1298,7 +1298,7 @@ class Server extends EventEmitter {
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
           params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce + params.info_hash : ''
         } else {
-          params.relay = null
+          params.relay = ''
         }
         this.turnOffHTTP()
         cb(new Error('Refreshing'))
@@ -1309,7 +1309,7 @@ class Server extends EventEmitter {
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
           params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce + params.info_hash : ''
         } else {
-          params.relay = null
+          params.relay = ''
         }
         cb(new Error('Relaying'))
       } else {

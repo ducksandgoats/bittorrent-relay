@@ -19,6 +19,7 @@ const RECONNECT_MINIMUM = 10 * 1000
 const RECONNECT_MAXIMUM = 60 * 60 * 1000
 const RECONNECT_VARIANCE = 5 * 60 * 1000
 const OFFER_TIMEOUT = 50 * 1000
+let useMs = 0
 
 class WebSocketTracker extends Tracker {
   constructor (client, announceUrl) {
@@ -158,6 +159,8 @@ class WebSocketTracker extends Tracker {
   _openSocket () {
     this.destroyed = false
 
+    useMs = 0
+
     if (!this.peers) this.peers = {}
 
     this._onSocketConnectBound = () => {
@@ -221,9 +224,12 @@ class WebSocketTracker extends Tracker {
     }
 
     if(data.action === 'relay'){
+      const useUrl = this.announceUrl
       this.announceUrl = data.relay
-      this.destroy()
-      this._openSocket()
+      useMs = 1000
+      this.socket[useUrl].close()
+      // this.destroy()
+      // this._openSocket()
     } else if (data.action === 'announce') {
       this._onAnnounceResponse(data)
     } else if (data.action === 'scrape') {
@@ -348,7 +354,7 @@ class WebSocketTracker extends Tracker {
   }
 
   _startReconnectTimer () {
-    const ms = Math.floor(Math.random() * RECONNECT_VARIANCE) + Math.min(Math.pow(2, this.retries) * RECONNECT_MINIMUM, RECONNECT_MAXIMUM)
+    const ms = useMs || Math.floor(Math.random() * RECONNECT_VARIANCE) + Math.min(Math.pow(2, this.retries) * RECONNECT_MINIMUM, RECONNECT_MAXIMUM)
 
     this.reconnecting = true
     clearTimeout(this.reconnectTimer)

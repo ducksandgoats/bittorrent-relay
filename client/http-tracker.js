@@ -167,8 +167,7 @@ class HTTPTracker extends Tracker {
     try {
       data = bencode.decode(data)
       if(data['relay']){
-        this._request(data['relay'], params, cb)
-        return
+        return this._request(data['relay'].toString(), params, cb)
       }
     } catch (err) {
       return cb(new Error(`Error decoding tracker response: ${err.message}`))
