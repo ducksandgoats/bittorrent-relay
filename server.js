@@ -949,8 +949,8 @@ class Server extends EventEmitter {
           for(const m in message){
             socket[m] = message[m]
           }
-          socket.relay = socket.web + '/relay/'
-          socket.announce = socket.web + '/announce/'
+          socket.relay = {http: socket.web.http + '/relay/', ws: socket.web.ws + '/relay/'}
+          socket.announce = {http: socket.web.http + '/announce/', ws: socket.web.ws + '/announce/'}
           for(const r of socket.relays){
             if(self.relays.has(r)){
               self.relays.get(r).push(socket)
@@ -1073,6 +1073,7 @@ class Server extends EventEmitter {
       params = parseHttpRequest(req, opts)
       params.httpReq = req
       params.httpRes = res
+      params.proto = false
     } catch (err) {
       res.end(bencode.encode({
         'failure reason': err.message
@@ -1131,6 +1132,7 @@ class Server extends EventEmitter {
   _onWebSocketRequest (socket, opts, params) {
     try {
       params = parseWebSocketRequest(socket, opts, params)
+      params.proto = true
     } catch (err) {
       socket.send(JSON.stringify({
         'failure reason': err.message
@@ -1296,7 +1298,11 @@ class Server extends EventEmitter {
         const checkHas = this.relays.has(relay)
         if(checkHas){
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
-          params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce + params.info_hash : ''
+          if(params.proto){
+            params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce.ws + params.info_hash : ''
+          } else {
+            params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce.http + params.info_hash : ''
+          }
         } else {
           params.relay = ''
         }
@@ -1307,13 +1313,17 @@ class Server extends EventEmitter {
         const checkHas = this.relays.has(relay)
         if(checkHas){
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
-          params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce + params.info_hash : ''
+          if(params.proto){
+            params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce.ws + params.info_hash : ''
+          } else {
+            params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce.http + params.info_hash : ''
+          }
         } else {
           params.relay = ''
         }
         cb(new Error('Relaying'))
       } else {
-        params.relay = null
+        params.relay = ''
         this._onAnnounce(params, cb)
       }
     } else if (params && params.action === common.ACTIONS.SCRAPE) {
