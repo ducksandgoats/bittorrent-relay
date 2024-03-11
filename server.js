@@ -15,7 +15,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import ed from 'ed25519-supercop'
-import url, { URLSearchParams } from 'url'
+import url from 'url'
 
 const debug = Debug('bittorrent-tracker:server')
 const hasOwnProperty = Object.prototype.hasOwnProperty
