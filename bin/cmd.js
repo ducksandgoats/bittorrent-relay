@@ -34,7 +34,7 @@ const argv = minimist(process.argv.slice(2), {
     'trust-proxy': null,
     'auth': true,
     'dir': path.join(process.cwd(), 'data'),
-    'hashes': null,
+    'hashes': '',
     'user': {},
     'index': true,
     'init': true,
