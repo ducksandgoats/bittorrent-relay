@@ -763,8 +763,12 @@ class Server extends EventEmitter {
     this.http.listen(this.port, this.host)
   }
 
-  midDHT(){
+  turnOnDHT(){
     this.relay.listen(this.port, this.host)
+  }
+
+  turnOffDHT(){
+    this.relay.destroy()
   }
 
   turnOffHTTP(){
@@ -869,9 +873,9 @@ class Server extends EventEmitter {
 
   create(cb = null){
     this.turnRelay()
-    this.turnSocket()
     this.turnWeb()
-    this.midDHT()
+    this.turnSocket()
+    this.turnOnDHT()
     this.turnOnHTTP()
     if(cb){
       cb()
