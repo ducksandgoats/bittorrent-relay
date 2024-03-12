@@ -29,7 +29,7 @@ const argv = minimist(process.argv.slice(2), {
     'priv'
   ],
   default: {
-    'port': 16969,
+    'port': 10509,
     'host': '0.0.0.0',
     'domain': '',
     'trust-proxy': null,
