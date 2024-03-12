@@ -87,7 +87,7 @@ class Server extends EventEmitter {
     this.address = `${this.host}:${this.port}`
     this._trustProxy = Boolean(opts.trustProxy)
     this.hash = crypto.createHash('sha1').update(this.address).digest('hex')
-    this.web = {http: `http://${this.domain || this.host}:${this.port}`, ws: `ws://${this.domain || this.host}:${this.port}`}
+    this.web = `${this.domain || this.host}:${this.port}`
     this.sockets = new Map()
     this.triedAlready = new Map()
     this.status = Boolean(opts.status)
@@ -956,8 +956,6 @@ class Server extends EventEmitter {
           for(const m in message){
             socket[m] = message[m]
           }
-          socket.relay = {http: socket.web.http + '/relay/', ws: socket.web.ws + '/relay/'}
-          socket.announce = {http: socket.web.http + '/announce/', ws: socket.web.ws + '/announce/'}
           for(const r of socket.relays){
             if(self.relays.has(r)){
               self.relays.get(r).push(socket)
@@ -1080,7 +1078,6 @@ class Server extends EventEmitter {
       params = parseHttpRequest(req, opts)
       params.httpReq = req
       params.httpRes = res
-      params.proto = false
     } catch (err) {
       res.end(bencode.encode({
         'failure reason': err.message
@@ -1139,7 +1136,6 @@ class Server extends EventEmitter {
   _onWebSocketRequest (socket, opts, params) {
     try {
       params = parseWebSocketRequest(socket, opts, params)
-      params.proto = true
     } catch (err) {
       socket.send(JSON.stringify({
         'failure reason': err.message
@@ -1305,11 +1301,7 @@ class Server extends EventEmitter {
         const checkHas = this.relays.has(relay)
         if(checkHas){
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
-          if(params.proto){
-            params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce.ws + params.info_hash : ''
-          } else {
-            params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce.http + params.info_hash : ''
-          }
+          params.relay = checkGet.length ? `${params.type}://${checkGet[Math.floor(Math.random() * checkGet.length)].web}/announce/${params.info_hash}` : ''
         } else {
           params.relay = ''
         }
@@ -1320,11 +1312,7 @@ class Server extends EventEmitter {
         const checkHas = this.relays.has(relay)
         if(checkHas){
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
-          if(params.proto){
-            params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce.ws + params.info_hash : ''
-          } else {
-            params.relay = checkGet.length ? checkGet[Math.floor(Math.random() * checkGet.length)].announce.http + params.info_hash : ''
-          }
+          params.relay = checkGet.length ? `${params.type}://${checkGet[Math.floor(Math.random() * checkGet.length)].web}/announce/${params.info_hash}` : ''
         } else {
           params.relay = ''
         }
