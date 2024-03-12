@@ -16,6 +16,7 @@ const argv = minimist(process.argv.slice(2), {
     // 'turnoff',
     'trust-proxy',
     'version',
+    'ev'
   ],
   string: [
     'domain',
@@ -40,7 +41,8 @@ const argv = minimist(process.argv.slice(2), {
     'init': true,
     'stats': true,
     'timer': {},
-    'limit': {}
+    'limit': {},
+    'ev': false
   }
 })
 
