@@ -19,34 +19,28 @@ const argv = minimist(process.argv.slice(2), {
   ],
   string: [
     'domain',
-    'dht-host',
-    'tracker-host',
     'host',
     'hashes',
-    'key',
-    'index'
+    'pub',
+    'priv',
+    'index',
+    'pub',
+    'priv'
   ],
   default: {
-    'dht-port': 16881,
-    'tracker-port': 16969,
-    'dht-host': '0.0.0.0',
-    'tracker-host': '0.0.0.0',
     'port': 16969,
     'host': '0.0.0.0',
-    'announce-timer': 10 * 60 * 1000,
-    'relay-timer': 5 * 60 * 1000,
-    'timer': 1 * 60 * 1000,
     'domain': '',
     'trust-proxy': null,
     'auth': true,
     'dir': path.join(process.cwd(), 'data'),
-    'hashes': '',
-    'key': null,
+    'hashes': null,
+    'user': {},
     'index': true,
     'init': true,
-    'ev': false,
     'stats': true,
-    'tracks': true
+    'timer': {},
+    'limit': {}
   }
 })
 
@@ -90,30 +84,26 @@ if(!fs.existsSync(argv['dir'])){
 }
 
 if(!argv['hashes']){
-  console.error('must have at least 1 hash')
-  process.exit(undefined)
+  argv['hashes'] = '08ada5a7a6183aae1e09d831df6748d566095a10'
+}
+
+if(argv['pub'] && argv['priv']){
+  argv['user'] = {pub: argv['pub'], priv: argv['priv']}
 }
 
 const server = new Server({
-  announceTimer: argv['announce-timer'],
-  relayTimer: argv['relay-timer'],
   timer: argv['timer'],
   trustProxy: argv['trust-proxy'],
   domain: argv['domain'],
-  dhtPort: argv['dht-port'],
-  trackerPort: argv['tracker-port'],
-  dhtHost: argv['dht-host'],
-  trackerHost: argv['tracker-host'],
   auth: argv['auth'],
   dir: argv['dir'],
   host: argv['host'],
   port: argv['port'],
   hashes: argv['hashes'].split(',').filter(Boolean),
-  key: argv['key'],
+  user: argv['user'],
   index: argv['index'],
   init: argv['init'],
-  stats: argv['stats'],
-  tracks: argv['tracks']
+  stats: argv['stats']
 })
 
 server.on('listening', (which) => {

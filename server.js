@@ -38,14 +38,14 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  * @param {Boolean}  opts.auth     password to add infohashes
  * @param {String}  opts.dir     directory to store config files
  * @param {Array|String}  opts.hashes     join the relays for these hashes, array of hashes or comma separated string of hashes
- * @param {Object|Boolean}  opts.user    user data like public key and private key
+ * @param {Object}  opts.user    user data like public key and private key
  * @param {Boolean} opts.stats          enable web-based statistics?
  * @param {Object} opts.limit       limit the connections of the relay and the hashes
  * @param {Boolean} opts.status          accept only the hashes from the hashes array in the hashes option
- * @param {Boolean|String}  opts.index    serve an html file when the request is to /
- * @param {Boolean|String}  opts.peersCacheLength    max amount of elements in cache, default is 1000
- * @param {Boolean|String}  opts.peersCacheTtl    max amount of time to hold elements in cache, default is 20 minutes
- * @param {Boolean|String}  opts.init    automatically start once instantiated
+ * @param {Boolean}  opts.index    serve an html file when the request is to /
+ * @param {Number}  opts.peersCacheLength    max amount of elements in cache, default is 1000
+ * @param {Number}  opts.peersCacheTtl    max amount of time to hold elements in cache, default is 20 minutes
+ * @param {Boolean}  opts.init    automatically start once instantiated
  */
 
 // * @param {Function}  opts.extendRelay    have custom capabilities
@@ -126,7 +126,11 @@ class Server extends EventEmitter {
       this.emit('ev', 'new key data was created, check ' + path.join(this.dir, 'user') + ' for new key data, temp.txt will be deleted in 5 minutes')
     }
 
-    this.hashes = new Set((typeof(opts.hashes) === 'object' && Array.isArray(opts.hashes)) ? opts.hashes : typeof(opts.hashes) === 'string' ? opts.hashes.split(',').filter(Boolean) : [])
+    if(!opts.hashes || !Array.isArray(opts.hashes) || !opts.hashes.length || !opts.hashes.every((data) => {return typeof(data) === 'string'})){
+      throw new Error('hashes must be an array with at least 1 infohash that is a string')
+    }
+
+    this.hashes = new Set(opts.hashes)
     fs.writeFile(path.join(this.dir, 'hashes.txt'), JSON.stringify(Array.from(this.hashes)), {}, (err) => {
       if(err){
         this.emit('error', err)
@@ -169,6 +173,22 @@ class Server extends EventEmitter {
       }
 
       self.talkToRelay()
+
+      this.intervalRelay = setInterval(() => {
+        this.talkToRelay()
+      }, this.timer.active)
+  
+      this.intervalActive = setInterval(() => {
+        for(const test in this.sockets.values()){
+          if(!test.active){
+            test.terminate()
+            continue
+          }
+          test.active = false
+          test.send(JSON.stringify({action: 'ping'}))
+        }
+      }, this.timer.inactive)
+      
       this.listening = true
       self.emit('listening', 'http')
     }
@@ -532,6 +552,10 @@ class Server extends EventEmitter {
     }
     this.http.onClose = () => {
       this.http.handleListeners()
+
+      clearInterval(this.intervalRelay)
+  
+      clearInterval(this.intervalActive)
       // this.ws.clients.forEach((data) => {
       //   data.send(JSON.stringify({action: 'off'}))
       //   data.terminate()
@@ -846,21 +870,6 @@ class Server extends EventEmitter {
     this.turnWeb()
     this.midDHT()
     this.turnOnHTTP()
-    this.talkToRelay()
-    this.intervalRelay = setInterval(() => {
-      this.talkToRelay()
-    }, this.timer.active)
-
-    this.intervalActive = setInterval(() => {
-      for(const test in this.sockets.values()){
-        if(!test.active){
-          test.terminate()
-          continue
-        }
-        test.active = false
-        test.send(JSON.stringify({action: 'ping'}))
-      }
-    }, this.timer.inactive)
     if(cb){
       cb()
     }
