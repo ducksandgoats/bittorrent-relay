@@ -118,7 +118,7 @@ class Server extends EventEmitter {
       fs.mkdirSync(path.join(this.dir, 'user'))
     }
     try {
-      this.sig = ed.sign(this.test, this.user.pub, this.user.priv)
+      this.sig = ed.sign(this.test, this.user.pub, this.user.priv).toString('hex')
       this.key = this.user.pub
       this.emit('ev', 'signed data using key')
     } catch (error) {
@@ -820,7 +820,7 @@ class Server extends EventEmitter {
     const useData = {seed: test.toString('hex'), pub: check.publicKey.toString('hex'), pri: check.secretKey.toString('hex')}
     fs.writeFileSync(path.join(this.dir, 'user', 'temp.txt'), JSON.stringify(useData))
     setTimeout(() => {fs.rmSync(path.join(this.dir, 'user', 'temp.txt'), {force: true})}, 300000)
-    const sig = ed.sign(this.test, useData.pub, useData.pri)
+    const sig = ed.sign(this.test, useData.pub, useData.pri).toString('hex')
     return {pub: useData.pub, sig}
   }
 
@@ -960,7 +960,7 @@ class Server extends EventEmitter {
       // do limit check
       // send the right data
       try {
-        const message = JSON.parse(data.toString())
+        const message = JSON.parse(data.toString('utf-8'))
         if(message.action === 'session'){
           if(!message.sig || !ed.verify(message.sig, self.test, message.key) || self.sockets.has(message.hash)){
             socket.close()
@@ -972,7 +972,6 @@ class Server extends EventEmitter {
           for(const m in message){
             socket[m] = message[m]
           }
-          socket.sig = socket.sig.toString('hex')
           for(const r of socket.relays){
             if(self.relays.has(r)){
               self.relays.get(r).push(socket)
