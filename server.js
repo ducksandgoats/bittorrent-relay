@@ -960,7 +960,7 @@ class Server extends EventEmitter {
       // do limit check
       // send the right data
       try {
-        const message = JSON.parse(data.toString('utf-8'))
+        const message = JSON.parse(data.toString())
         if(message.action === 'session'){
           if(!message.sig || !ed.verify(message.sig, self.test, message.key) || self.sockets.has(message.hash)){
             socket.close()
