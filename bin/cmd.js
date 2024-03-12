@@ -83,10 +83,6 @@ if(!fs.existsSync(argv['dir'])){
   fs.mkdirSync(argv['dir'], {recursive: true})
 }
 
-if(!argv['hashes']){
-  argv['hashes'] = '08ada5a7a6183aae1e09d831df6748d566095a10'
-}
-
 if(argv['pub'] && argv['priv']){
   argv['user'] = {pub: argv['pub'], priv: argv['priv']}
 }
