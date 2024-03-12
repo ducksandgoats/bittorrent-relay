@@ -99,7 +99,8 @@ const server = new Server({
   user: argv['user'],
   index: argv['index'],
   init: argv['init'],
-  stats: argv['stats']
+  stats: argv['stats'],
+  domain: argv['domain']
 })
 
 server.on('listening', (which) => {

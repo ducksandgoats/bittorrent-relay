@@ -79,7 +79,10 @@ class Server extends EventEmitter {
     this.torrents = {}
     this.http = null
     this.ws = null
-    this.domain = opts.domain || null
+    if(!opts.domain){
+      throw new Error('must have a domain')
+    }
+    this.domain = opts.domain
     this.timer.inactive = this.timer.inactive || 1 * 60 * 1000
     this.timer.active = this.timer.active || 5 * 60 * 1000
     this.host = opts.host || '0.0.0.0'
@@ -87,7 +90,7 @@ class Server extends EventEmitter {
     this.address = `${this.host}:${this.port}`
     this._trustProxy = Boolean(opts.trustProxy)
     this.hash = crypto.createHash('sha1').update(this.address).digest('hex')
-    this.web = `${this.domain || this.host}:${this.port}`
+    this.web = `${this.domain}:${this.port}`
     this.sockets = new Map()
     this.triedAlready = new Map()
     this.status = Boolean(opts.status)
