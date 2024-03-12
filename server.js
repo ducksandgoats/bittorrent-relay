@@ -31,10 +31,6 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  *
  * @param {Object}  opts                options object
  * @param {Object}  opts.timer       interval for general things like checking for active and inactive connections (ms)
- * @param {Number}  opts.dhtPort      port used for the dht
- * @param {Number}  opts.trackerPort     port used for the tracker
- * @param {Number}  opts.dhtHost      port used for the dht
- * @param {Number}  opts.trackerHost     port used for the tracker
  * @param {String}  opts.host     host used for server
  * @param {Number}  opts.port     port used for server
  * @param {String}  opts.domain     domain name that will be used
@@ -45,7 +41,6 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  * @param {Object|Boolean}  opts.user    user data like public key and private key
  * @param {Boolean} opts.stats          enable web-based statistics?
  * @param {Object} opts.limit       limit the connections of the relay and the hashes
- * @param {Boolean} opts.tracks      enable routes to share internal data to users
  * @param {Boolean} opts.status          accept only the hashes from the hashes array in the hashes option
  * @param {Boolean|String}  opts.index    serve an html file when the request is to /
  * @param {Boolean|String}  opts.peersCacheLength    max amount of elements in cache, default is 1000
@@ -66,7 +61,6 @@ class Server extends EventEmitter {
     
     this.test = '0'
     this.stats = opts.stats
-    this.tracks = opts.tracks
     this.limit = typeof(opts.limit) === 'object' && !Array.isArray(opts.limit) ? opts.limit : {}
     this.timer = typeof(opts.timer) === 'object' && !Array.isArray(opts.timer) ? opts.timer : {}
     this.limit.serverConnections = this.limit.serverConnections || 0
@@ -88,22 +82,13 @@ class Server extends EventEmitter {
     this.domain = opts.domain || null
     this.timer.inactive = this.timer.inactive || 1 * 60 * 1000
     this.timer.active = this.timer.active || 5 * 60 * 1000
-    this.DHTPORT = opts.dhtPort || 16881
-    this.TRACKERPORT = opts.trackerPort || 16969
-    this.DHTHOST = opts.dhtHost || '0.0.0.0'
-    this.TRACKERHOST = opts.trackerHost || '0.0.0.0'
-    this.host = opts.host
-    if(!this.host || this.host.includes('0.0.0.0') || this.host.includes('localhost') || this.host.includes('127.0.0.1')){
-      throw new Error('must have host')
-    }
-    this.port = opts.port || this.TRACKERPORT
+    this.host = opts.host || '0.0.0.0'
+    this.port = opts.port || 10509
     this.address = `${this.host}:${this.port}`
     this._trustProxy = Boolean(opts.trustProxy)
-    this.dht = {host: this.DHTHOST, port: this.DHTPORT}
-    this.tracker = {host: this.TRACKERHOST, port: this.TRACKERPORT}
     this.hash = crypto.createHash('sha1').update(this.address).digest('hex')
     this.web = {http: `http://${this.domain || this.host}:${this.port}`, ws: `ws://${this.domain || this.host}:${this.port}`}
-    this.trackers = new Map()
+    this.sockets = new Map()
     this.triedAlready = new Map()
     this.status = Boolean(opts.status)
 
@@ -164,12 +149,12 @@ class Server extends EventEmitter {
     }
     this.http.onListening = () => {
       debug('listening')
-      // for(const socket in self.trackers.values()){
+      // for(const socket in self.sockets.values()){
       //   if(socket.readyState === 1){
-      //     socket.send(JSON.stringify({action: 'web', tracker: self.tracker, dht: self.dht, domain: self.domain, host: self.host, port: self.port, web: self.web, hash: self.hash}))
+      //     socket.send(JSON.stringify({action: 'web', domain: self.domain, host: self.host, port: self.port, web: self.web, hash: self.hash}))
       //   }
       // }
-      self.trackers.forEach((data) => {data.send(JSON.stringify({action: 'on'}))})
+      self.sockets.forEach((data) => {data.send(JSON.stringify({action: 'on'}))})
       if(self.limit.refreshConnections){
         if(self.refresh){
           clearInterval(self.refresh)
@@ -375,10 +360,10 @@ class Server extends EventEmitter {
             ${printClients(stats.clients)}
           `.replace(/^\s+/gm, '')) // trim left
   
-        } else if(req.method === 'GET' && req.url === '/hashes.html' && this.tracks){
+        } else if(req.method === 'GET' && req.url === '/hashes.html'){
           res.setHeader('Content-Type', 'text/html')
           res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];for(const testing of this.hashes.keys()){arr.push(testing)};return arr;})().join('\n')}</body></html>`)
-        } else if(req.method === 'GET' && req.url === '/hashes.json' && this.tracks){
+        } else if(req.method === 'GET' && req.url === '/hashes.json'){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(Array.from(this.hashes)))
         } else if(req.method === 'POST' && req.url.startsWith('/add/') && this.auth){
@@ -416,7 +401,7 @@ class Server extends EventEmitter {
                     self.emit('ev', num)
                   }
                 })
-                self.relay.announce(testHash, self.TRACKERPORT, (err) => {
+                self.relay.announce(testHash, self.port, (err) => {
                   if(err){
                     self.emit('error', err)
                   } else {
@@ -551,7 +536,7 @@ class Server extends EventEmitter {
       //   data.send(JSON.stringify({action: 'off'}))
       //   data.terminate()
       // })
-      self.trackers.forEach((data) => {
+      self.sockets.forEach((data) => {
         data.send(JSON.stringify({action: 'off'}))
       })
       this.triedAlready.clear()
@@ -671,7 +656,6 @@ class Server extends EventEmitter {
     this.relay.onPeer = (peer, infoHash, from) => {
       // if not connected, then connect socket
       // share resource details on websocket
-      // this.tracker[infoHash][ws-link]
       const ih = infoHash.toString('hex')
 
       if(!this.relays.has(ih)){
@@ -691,8 +675,8 @@ class Server extends EventEmitter {
         }
       }
 
-      // if(this.trackers.has(hash)){
-      //   const checkTracker = this.trackers.get(hash)
+      // if(this.sockets.has(hash)){
+      //   const checkTracker = this.sockets.get(hash)
       //   const checkRelay = this.relays.get(ih)
       //   if(checkRelay.every((data) => {return checkTracker.hash !== data.hash})){
       //     // checkRelay.push(checkTracker)
@@ -704,8 +688,8 @@ class Server extends EventEmitter {
       //   return
       // }
 
-      if(this.trackers.has(hash)){
-        const checkTracker = this.trackers.get(hash)
+      if(this.sockets.has(hash)){
+        const checkTracker = this.sockets.get(hash)
         const checkRelay = this.relays.get(ih)
         if(checkRelay.every((data) => {return checkTracker.hash !== data.hash})){
           // checkRelay.push(checkTracker)
@@ -749,11 +733,11 @@ class Server extends EventEmitter {
   }
 
   turnOnHTTP(){
-    this.http.listen(this.TRACKERPORT, this.TRACKERHOST)
+    this.http.listen(this.port, this.host)
   }
 
   midDHT(){
-    this.relay.listen(this.DHTPORT, this.DHTHOST)
+    this.relay.listen(this.port, this.host)
   }
 
   turnOffHTTP(){
@@ -827,7 +811,7 @@ class Server extends EventEmitter {
             this.emit('ev', test + ': ' + num)
           }
         })
-        this.relay.announce(test, this.TRACKERPORT, (err) => {
+        this.relay.announce(test, this.port, (err) => {
           if(err){
             this.emit('error', err)
           } else {
@@ -847,7 +831,7 @@ class Server extends EventEmitter {
   //       this.emit('ev', test + ': ' + num)
   //     }
   //   })
-  //   this.relay.announce(test, this.TRACKERPORT, (err) => {
+  //   this.relay.announce(test, this.port, (err) => {
   //     if(err){
   //       this.emit('error', err)
   //     } else {
@@ -868,7 +852,7 @@ class Server extends EventEmitter {
     }, this.timer.active)
 
     this.intervalActive = setInterval(() => {
-      for(const test in this.trackers.values()){
+      for(const test in this.sockets.values()){
         if(!test.active){
           test.terminate()
           continue
@@ -895,7 +879,7 @@ class Server extends EventEmitter {
     }
     clearInterval(this.intervalRelay)
     clearInterval(this.intervalActive)
-    this.trackers.clear()
+    this.sockets.clear()
     this.relays.clear()
     this.hashes.clear()
     if(cb){
@@ -922,12 +906,12 @@ class Server extends EventEmitter {
 
   onRelaySocketConnection(socket){
     this.serverCount = this.serverCount + 1
-    // ifhash sent from messages exists already in this.trackers then close the socket
+    // ifhash sent from messages exists already in this.sockets then close the socket
     const self = this
     socket.onOpen = function(){
       // do limit check
       // send the right messages
-      // self.trackers[socket.hash] = socket
+      // self.sockets[socket.hash] = socket
       if(socket.hash){
         if(self.triedAlready.has(socket.hash)){
           self.triedAlready.delete(socket.hash)
@@ -962,7 +946,7 @@ class Server extends EventEmitter {
       try {
         const message = buffer ? JSON.parse(Buffer.from(data).toString('utf-8')) : JSON.parse(data)
         if(message.action === 'session'){
-          if(!message.sig || !ed.verify(message.sig, self.test, message.key) || self.trackers.has(message.hash)){
+          if(!message.sig || !ed.verify(message.sig, self.test, message.key) || self.sockets.has(message.hash)){
             socket.close()
             return
           }
@@ -980,7 +964,7 @@ class Server extends EventEmitter {
             }
           }
           socket.session = true
-          self.trackers.set(socket.hash, socket)
+          self.sockets.set(socket.hash, socket)
           if(socket.server){
             socket.send(JSON.stringify({hash: self.hash, key: self.key, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: useRelay, status: self.status, sig: self.sig, action: 'session', reply: true}))
           }
@@ -1069,8 +1053,8 @@ class Server extends EventEmitter {
       }
 
       if(socket.hash){
-        if(self.trackers.has(socket.hash)){
-          self.trackers.delete(socket.hash)
+        if(self.sockets.has(socket.hash)){
+          self.sockets.delete(socket.hash)
         }
       }
 
