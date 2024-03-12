@@ -972,6 +972,7 @@ class Server extends EventEmitter {
           for(const m in message){
             socket[m] = message[m]
           }
+          socket.sig = socket.sig.toString('hex')
           for(const r of socket.relays){
             if(self.relays.has(r)){
               self.relays.get(r).push(socket)
