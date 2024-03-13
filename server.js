@@ -388,6 +388,18 @@ class Server extends EventEmitter {
         } else if(req.method === 'GET' && req.url === '/hashes.json'){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(Array.from(this.hashes)))
+        } else if(req.method === 'GET' && req.url === '/hash.html'){
+          res.setHeader('Content-Type', 'text/html')
+          res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.hash)});return arr;})().join('\n')}</body></html>`)
+        } else if(req.method === 'GET' && req.url === '/hash.json'){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify((() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.hash)});return arr;})()))
+        } else if(req.method === 'GET' && req.url === '/key.html'){
+          res.setHeader('Content-Type', 'text/html')
+          res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.key)});return arr;})().join('\n')}</body></html>`)
+        } else if(req.method === 'GET' && req.url === '/key.json'){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify((() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.key)});return arr;})()))
         } else if(req.method === 'POST' && req.url.startsWith('/add/') && this.auth){
           let useAuth = ''
           let useRes
