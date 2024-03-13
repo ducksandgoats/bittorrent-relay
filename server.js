@@ -65,9 +65,8 @@ class Server extends EventEmitter {
     this.timer = typeof(opts.timer) === 'object' && !Array.isArray(opts.timer) ? opts.timer : {}
     this.limit.serverConnections = this.limit.serverConnections || 0
     this.limit.clientConnections = this.limit.clientConnections || 0
-    this.limit.refreshConnections = this.limit.clientConnections ? this.limit.clientConnections + (this.limit.refresh ? this.limit.refreshConnections || 1000 : 1000) : 0
+    this.limit.refreshConnections = this.limit.clientConnections ? this.limit.clientConnections + (this.limit.refreshConnections || 1000) : 0
     this.limit.refreshLimit = this.limit.refreshLimit || 0
-    this.limit.clientOrRefresh = Boolean(this.limit.clientOrRefresh)
     this.timer.activity = this.timer.activity || 5 * 60 * 1000
     this.clientCount = 0
     this.serverCount = 0
@@ -573,8 +572,7 @@ class Server extends EventEmitter {
           clearInterval(self.refresh)
         }
         self.refresh = setInterval(() => {
-          const check = self.limit.clientOrRefresh ? self.limit.refreshConnections : self.limit.clientConnections
-          if(self.clientCount <= check){
+          if(self.clientCount <= self.limit.clientConnections){
             if(self.limit.refreshLimit){
               if(self.clientCount <= self.limit.refreshLimit){
                 self.turnWeb()
