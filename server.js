@@ -382,10 +382,10 @@ class Server extends EventEmitter {
             ${printClients(stats.clients)}
           `.replace(/^\s+/gm, '')) // trim left
   
-        } else if(req.method === 'GET' && req.url === '/hashes.html'){
+        } else if(req.method === 'GET' && req.url === '/infohash.html'){
           res.setHeader('Content-Type', 'text/html')
           res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];for(const testing of this.hashes.keys()){arr.push(testing)};return arr;})().join('\n')}</body></html>`)
-        } else if(req.method === 'GET' && req.url === '/hashes.json'){
+        } else if(req.method === 'GET' && req.url === '/infohash.json'){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(Array.from(this.hashes)))
         } else if(req.method === 'GET' && req.url === '/hash.html'){
