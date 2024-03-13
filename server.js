@@ -137,7 +137,7 @@ class Server extends EventEmitter {
       if(err){
         this.emit('error', err)
       } else {
-        this.emit('ev', 'saved relays')
+        this.emit('ev', 'saved hashes')
       }
     })
     this.relays = new Map((() => {const test = [];this.hashes.forEach((data) => {test.push([crypto.createHash('sha1').update(data).digest('hex'), []])});return test;})())
@@ -446,7 +446,7 @@ class Server extends EventEmitter {
                   if(err){
                     self.emit('error', err)
                   } else {
-                    self.emit('ev', 'saved relays')
+                    self.emit('ev', 'saved hashes')
                   }
                 })
                 fs.writeFile(path.join(self.dir, 'relays.txt'), JSON.stringify(Array.from(self.relays.keys())), {}, (err) => {
@@ -522,7 +522,7 @@ class Server extends EventEmitter {
                   if(err){
                     self.emit('error', err)
                   } else {
-                    self.emit('ev', 'saved relays')
+                    self.emit('ev', 'saved hashes')
                   }
                 })
                 fs.writeFile(path.join(self.dir, 'relays.txt'), JSON.stringify(Array.from(self.relays.keys())), {}, (err) => {
@@ -976,11 +976,8 @@ class Server extends EventEmitter {
             socket.close()
             return
           }
-          if(socket.server){
-            socket.hash = message.hash
-            delete message.hash
-            socket.send(JSON.stringify({hash: self.hash, key: self.key, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: useRelay, status: self.status, sig: self.sig, action: 'session', reply: true}))
-          }
+          const useHash = message.hash
+          delete message.hash
           const useRelay = message.relay
           delete message.relay
           message.relays = [useRelay]
@@ -993,6 +990,10 @@ class Server extends EventEmitter {
             }
           }
           socket.session = true
+          if(socket.server){
+            socket.hash = useHash
+            socket.send(JSON.stringify({hash: self.hash, key: self.key, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: useRelay, status: self.status, sig: self.sig, action: 'session', reply: false}))
+          }
           self.sockets.set(socket.hash, socket)
         }
         if(message.action === 'add'){
