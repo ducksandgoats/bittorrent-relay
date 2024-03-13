@@ -88,8 +88,8 @@ class Server extends EventEmitter {
     this.port = opts.port || 10509
     this.address = `${this.host}:${this.port}`
     this._trustProxy = Boolean(opts.trustProxy)
-    this.hash = crypto.createHash('sha1').update(this.address).digest('hex')
     this.web = `${this.domain}:${this.port}`
+    this.hash = crypto.createHash('sha1').update(this.web).digest('hex')
     this.sockets = new Map()
     this.triedAlready = new Map()
     this.status = Boolean(opts.status)
@@ -976,8 +976,11 @@ class Server extends EventEmitter {
             socket.close()
             return
           }
-          const useHash = message.hash
-          delete message.hash
+          if(socket.server){
+            socket.hash = message.hash
+            delete message.hash
+            socket.send(JSON.stringify({hash: self.hash, key: self.key, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: useRelay, status: self.status, sig: self.sig, action: 'session', reply: false}))
+          }
           const useRelay = message.relay
           delete message.relay
           message.relays = [useRelay]
@@ -990,10 +993,6 @@ class Server extends EventEmitter {
             }
           }
           socket.session = true
-          if(socket.server){
-            socket.hash = useHash
-            socket.send(JSON.stringify({hash: self.hash, key: self.key, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: useRelay, status: self.status, sig: self.sig, action: 'session', reply: false}))
-          }
           self.sockets.set(socket.hash, socket)
         }
         if(message.action === 'add'){
