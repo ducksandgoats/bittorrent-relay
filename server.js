@@ -976,13 +976,12 @@ class Server extends EventEmitter {
             socket.close()
             return
           }
-          const useHash = message.hash
-          delete message.hash
-          const useRelay = message.relay
+          cmessage.relays = [message.relay]
           delete message.relay
-          message.relays = [useRelay]
           for(const m in message){
-            socket[m] = message[m]
+            if(!socket[m]){
+              socket[m] = message[m]
+            }
           }
           for(const r of socket.relays){
             if(self.relays.has(r)){
@@ -990,11 +989,10 @@ class Server extends EventEmitter {
             }
           }
           socket.session = true
+          self.sockets.set(socket.hash, socket)
           if(socket.server){
-            socket.hash = useHash
             socket.send(JSON.stringify({hash: self.hash, key: self.key, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: useRelay, status: self.status, sig: self.sig, action: 'session', reply: false}))
           }
-          self.sockets.set(socket.hash, socket)
         }
         if(message.action === 'add'){
           if(!self.relays.has(message.relay)){
