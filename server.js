@@ -976,7 +976,7 @@ class Server extends EventEmitter {
             socket.close()
             return
           }
-          cmessage.relays = [message.relay]
+          message.relays = [message.relay]
           delete message.relay
           for(const m in message){
             if(!socket[m]){
