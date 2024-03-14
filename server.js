@@ -650,6 +650,7 @@ class Server extends EventEmitter {
             socket.hash = null
             socket.server = true
             socket.active = true
+            socket.relays = []
             socket.proc = false
             // socket.relay = useTest
             this.onRelaySocketConnection(socket)
@@ -657,6 +658,7 @@ class Server extends EventEmitter {
         } else {
           socket.hash = null
           socket.server = true
+          socket.relays = []
           socket.active = true
           socket.proc = false
           // socket.relay = useTest
@@ -744,8 +746,11 @@ class Server extends EventEmitter {
           const con = new WebSocket(relay)
           con.server = false
           con.active = true
+          con.relays = []
           con.relay = ih
           con.proc = false
+          con.hash = ih
+          this.sockets.set(con.hash, con)
           // con.hash = hash
           self.onRelaySocketConnection(con)
           return
@@ -755,8 +760,11 @@ class Server extends EventEmitter {
       const con = new WebSocket(relay)
       con.server = false
       con.active = true
+      con.relays = []
       con.relay = ih
       con.proc = false
+      con.hash = ih
+      this.sockets.set(con.hash, con)
       // con.hash = hash
       self.onRelaySocketConnection(con)
       return
@@ -976,8 +984,10 @@ class Server extends EventEmitter {
             socket.close()
             return
           }
-          const useRelay = message.relay
-          message.relays = [useRelay]
+          if(!socket.relays.includes(message.relay)){
+            socket.relays.push(message.relay)
+          }
+          // message.relays = [useRelay]
           delete message.relay
           for(const m in message){
             if(!socket[m]){
@@ -990,8 +1000,9 @@ class Server extends EventEmitter {
             }
           }
           socket.session = true
-          self.sockets.set(socket.hash, socket)
+          // self.sockets.set(socket.hash, socket)
           if(socket.server){
+            self.sockets.set(socket.hash, socket)
             socket.send(JSON.stringify({hash: self.hash, key: self.key, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: useRelay, status: self.status, sig: self.sig, action: 'session', reply: false}))
           }
         }
