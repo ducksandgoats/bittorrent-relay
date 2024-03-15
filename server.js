@@ -720,13 +720,15 @@ class Server extends EventEmitter {
 
       if(this.sockets.has(id)){
         const checkTracker = this.sockets.get(id)
-        const checkRelay = this.relays.get(ih)
-        if(checkRelay.every((data) => {return checkTracker.id !== data.id})){
-          // checkRelay.push(checkTracker)
-          // if(!checkTracker.relays.includes(ih)){
-          //   checkTracker.relays.push(ih)
-          // }
-          checkTracker.send(JSON.stringify({action: 'add', relay: ih, reply: true}))
+        if(checkTracker.readyState === 1){
+          const checkRelay = this.relays.get(ih)
+          if(checkRelay.every((data) => {return checkTracker.id !== data.id})){
+            // checkRelay.push(checkTracker)
+            // if(!checkTracker.relays.includes(ih)){
+            //   checkTracker.relays.push(ih)
+            // }
+            checkTracker.send(JSON.stringify({action: 'add', relay: ih, reply: true}))
+          }
         }
         return
       }
