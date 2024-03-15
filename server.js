@@ -821,17 +821,11 @@ class Server extends EventEmitter {
   genKey(){
     const test = ed.createSeed()
     const check = ed.createKeyPair(test)
-    const useData = {seed: test.toString('hex'), pub: check.publicKey.toString('hex'), pri: check.secretKey.toString('hex')}
+    const useData = {seed: test.toString('hex'), pub: check.publicKey.toString('hex'), priv: check.secretKey.toString('hex')}
     fs.writeFileSync(path.join(this.dir, 'user', 'temp.txt'), JSON.stringify(useData))
     setTimeout(() => {fs.rmSync(path.join(this.dir, 'user', 'temp.txt'), {force: true})}, 300000)
-    const sig = ed.sign(this.test, useData.pub, useData.pri).toString('hex')
+    const sig = ed.sign(this.test, useData.pub, useData.priv).toString('hex')
     return {pub: useData.pub, sig}
-  }
-
-  saveKey(e){
-    const sig = ed.sign(this.test, e.pub, e.pri)
-    this.emit('ev', 'signed data using key')
-    return {pub: e.pub, sig}
   }
 
   talkToRelay(){
