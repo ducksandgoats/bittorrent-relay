@@ -16,7 +16,8 @@ const argv = minimist(process.argv.slice(2), {
     // 'turnoff',
     'trust-proxy',
     'version',
-    'ev'
+    'ev',
+    'status'
   ],
   string: [
     'domain',
@@ -26,7 +27,8 @@ const argv = minimist(process.argv.slice(2), {
     'priv',
     'index',
     'pub',
-    'priv'
+    'priv',
+    'server'
   ],
   default: {
     'port': 10509,
@@ -42,7 +44,9 @@ const argv = minimist(process.argv.slice(2), {
     'stats': true,
     'timer': {},
     'limit': {},
-    'ev': false
+    'ev': false,
+    'status': true,
+    'server': '0.0.0.0'
   }
 })
 
