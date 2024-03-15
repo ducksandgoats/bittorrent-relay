@@ -940,7 +940,6 @@ class Server extends EventEmitter {
       }
       if(!socket.server){
         socket.send(JSON.stringify({id: self.id, key: self.key, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relay, status: self.status, sig: self.sig, action: 'session', reply: true}))
-        delete socket.relay
       }
     }
     socket.onError = function(err){
