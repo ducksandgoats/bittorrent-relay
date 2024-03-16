@@ -567,7 +567,7 @@ class Server extends EventEmitter {
       }
     }
     this.http.onClose = () => {
-      this.http.handleListeners()
+      // this.http.handleListeners()
 
       clearInterval(this.intervalRelay)
   
@@ -603,12 +603,12 @@ class Server extends EventEmitter {
       this.listening = false
       self.emit('close', 'http')
     }
-    this.http.handleListeners = () => {
-      this.http.off('error', this.http.onError)
-      this.http.off('listening', this.http.onListening)
-      this.http.off('request', this.http.onRequest)
-      this.http.off('close', this.http.onClose)
-    }
+    // this.http.handleListeners = () => {
+    //   this.http.off('error', this.http.onError)
+    //   this.http.off('listening', this.http.onListening)
+    //   this.http.off('request', this.http.onRequest)
+    //   this.http.off('close', this.http.onClose)
+    // }
 
     // Add default http request handler on next tick to give user the chance to add
     // their own handler first. Handle requests untouched by user's handler.
