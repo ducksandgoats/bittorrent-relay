@@ -693,12 +693,8 @@ class Server extends EventEmitter {
       }
 
       const useAddress = `${peer.host}:${peer.port}`
-      if(this.address === useAddress){
-        return
-      }
-
       const id = crypto.createHash('sha1').update(useAddress).digest('hex')
-      if(self.id === id){
+      if(self.address === useAddress || self.id === id){
         return
       }
 
