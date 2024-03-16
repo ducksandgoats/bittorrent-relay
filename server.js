@@ -643,6 +643,7 @@ class Server extends EventEmitter {
             socket.relays = []
             socket.proc = false
             this.sockets.set(socket.id, socket)
+            socket.send(JSON.stringify({id: self.id, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
             this.onRelaySocketConnection(socket)
           }
         } else {
@@ -653,6 +654,7 @@ class Server extends EventEmitter {
           socket.active = true
           socket.proc = false
           this.sockets.set(socket.id, socket)
+          socket.send(JSON.stringify({id: self.id, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
           this.onRelaySocketConnection(socket)
         }
       } else {
@@ -933,9 +935,7 @@ class Server extends EventEmitter {
           self.triedAlready.delete(socket.id)
         }
       }
-      if(!socket.server){
-        socket.send(JSON.stringify({id: self.id, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relay, status: self.status, sig: self.sig, action: 'session', reply: true}))
-      }
+      socket.send(JSON.stringify({id: self.id, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relay, status: self.status, sig: self.sig, action: 'session'}))
     }
     socket.onError = function(err){
       let useSocket
@@ -969,8 +969,8 @@ class Server extends EventEmitter {
             socket.relays.push(message.relay)
           }
           // message.relays = [useRelay]
-          const useRelay = message.relay
           delete message.relay
+          delete socket.relay
           for(const m in message){
             socket[m] = message[m]
           }
@@ -980,10 +980,6 @@ class Server extends EventEmitter {
             }
           }
           socket.session = true
-          if(socket.server){
-            socket.send(JSON.stringify({id: self.id, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: useRelay, status: self.status, sig: self.sig, action: 'session', reply: false}))
-          }
-          delete socket.relay
         }
         if(message.action === 'add'){
           if(!self.relays.has(message.relay)){
