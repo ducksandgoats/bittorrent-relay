@@ -65,8 +65,10 @@ class Server extends EventEmitter {
     this.timer = typeof(opts.timer) === 'object' && !Array.isArray(opts.timer) ? opts.timer : {}
     this.limit.serverConnections = this.limit.serverConnections || 0
     this.limit.clientConnections = this.limit.clientConnections || 0
-    this.limit.refreshConnections = this.limit.clientConnections ? this.limit.clientConnections + (this.limit.refreshConnections || 1000) : 0
-    this.limit.refreshLimit = this.limit.refreshLimit || 0
+    this.limit.refreshConnections = this.limit.refreshConnections || 0
+    if(this.limit.clientConnections && this.limit.refreshConnections && this.limit.refreshConnections >= this.limit.clientConnections){
+      throw new Error('refreshConnections must be lower than clientConnections')
+    }
     this.timer.activity = this.timer.activity || 5 * 60 * 1000
     this.clientCount = 0
     this.serverCount = 0
@@ -167,15 +169,13 @@ class Server extends EventEmitter {
       //   }
       // }
       self.sockets.forEach((data) => {data.send(JSON.stringify({action: 'on'}))})
-      if(self.limit.refreshConnections){
+      if(this.limit.clientConnections){
         if(self.refresh){
           clearInterval(self.refresh)
         }
         self.refresh = setInterval(() => {
-          if(self.limit.refreshConnections){
-            if(self.clientCount >= self.limit.refreshConnections){
-              self.turnOffHTTP()
-            }
+          if(self.clientCount >= self.limit.clientConnections){
+            self.turnOffHTTP()
           }
         }, this.timer.activity)
       }
@@ -581,19 +581,19 @@ class Server extends EventEmitter {
       })
       this.triedAlready.clear()
 
-      if(self.limit.refreshConnections){
+      if(this.limit.clientConnections){
         if(self.refresh){
           clearInterval(self.refresh)
         }
         self.refresh = setInterval(() => {
           if(self.clientCount <= self.limit.clientConnections){
-            if(self.limit.refreshLimit){
-              if(self.clientCount <= self.limit.refreshLimit){
-                self.turnWeb()
+            if(self.limit.refreshConnections){
+              if(self.clientCount < self.limit.refreshConnections){
+                // self.turnWeb()
                 self.turnOnHTTP()
               }
             } else {
-              self.turnWeb()
+              // self.turnWeb()
               self.turnOnHTTP()
             }
           }
@@ -1343,7 +1343,7 @@ class Server extends EventEmitter {
     if (params && params.action === common.ACTIONS.CONNECT) {
       cb(null, { action: common.ACTIONS.CONNECT })
     } else if (params && params.action === common.ACTIONS.ANNOUNCE) {
-      if(this.limit.refreshConnections && this.clientCount >= this.limit.refreshConnections){
+      if(this.limit.clientConnections && this.clientCount >= this.limit.clientConnections){
         const relay = crypto.createHash('sha1').update(params.info_hash).digest('hex')
         const checkHas = this.relays.has(relay)
         if(checkHas){
@@ -1353,16 +1353,6 @@ class Server extends EventEmitter {
           params.relay = ''
         }
         this.turnOffHTTP()
-        cb(new Error('Refreshing'))
-      } else if(this.limit.clientConnections && this.clientCount >= this.limit.clientConnections){
-        const relay = crypto.createHash('sha1').update(params.info_hash).digest('hex')
-        const checkHas = this.relays.has(relay)
-        if(checkHas){
-          const checkGet = this.relays.get(relay).filter((data) => {return data.session})
-          params.relay = checkGet.length ? `${params.type}://${checkGet[Math.floor(Math.random() * checkGet.length)].web}/announce` : ''
-        } else {
-          params.relay = ''
-        }
         cb(new Error('Relaying'))
       } else {
         params.relay = ''
