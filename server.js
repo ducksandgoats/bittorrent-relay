@@ -961,7 +961,7 @@ class Server extends EventEmitter {
       try {
         const message = JSON.parse(data.toString('utf-8'))
         if(message.action === 'session'){
-          if(socket.relay !== message.relay || message.id !== crypto.createHash('sha1').update(message.address).digest('hex') || !ed.verify(message.sig, self.test, message.name) || self.sockets.has(message.id)){
+          if(socket.relay !== message.relay || message.id !== crypto.createHash('sha1').update(message.address).digest('hex') || !ed.verify(message.sig, self.test, message.name)){
             socket.close()
             return
           }
