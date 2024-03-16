@@ -78,9 +78,9 @@ class Server extends EventEmitter {
     this.torrents = {}
     this.http = null
     this.ws = null
-    if(!opts.domain){
-      throw new Error('must have a domain')
-    }
+    // if(!opts.domain){
+    //   throw new Error('must have a domain')
+    // }
     this.domain = opts.domain
     this.timer.inactive = this.timer.inactive || 1 * 60 * 1000
     this.timer.active = this.timer.active || 5 * 60 * 1000
