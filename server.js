@@ -620,10 +620,10 @@ class Server extends EventEmitter {
         const params = new URLSearchParams(req.url.slice(req.url.indexOf('?')))
 
         const getRelayHash = params.has('relay_hash') ? params.get('relay_hash') : null
-        const checkRelayHash = getRelayHash && typeof(getRelayHash) === 'string' || getRelayHash.length === 20
+        const checkRelayHash = getRelayHash && typeof(getRelayHash) === 'string' && getRelayHash.length === 40
 
         const getId = params.has('id') ? params.get('id') : null
-        const checkId = getId && typeof(getId) === 'string' && getId.length === 20
+        const checkId = getId && typeof(getId) === 'string' && getId.length === 40
 
         const checkHasSocket = getId ? this.sockets.has(getId) : null
         const checkHasRelay = getRelayHash ? this.relays.has(getRelayHash) : null
@@ -692,7 +692,12 @@ class Server extends EventEmitter {
         return
       }
 
-      const id = crypto.createHash('sha1').update(peer.host + ':' + peer.port).digest('hex')
+      const useAddress = `${peer.host}:${peer.port}`
+      if(this.address === useAddress){
+        return
+      }
+
+      const id = crypto.createHash('sha1').update(useAddress).digest('hex')
       if(self.id === id){
         return
       }
@@ -735,7 +740,7 @@ class Server extends EventEmitter {
 
       if(this.limit.serverConnections){
         if(this.relays.get(ih).length < this.limit.serverConnections){
-          const relay = `ws://${peer.host}:${peer.port}/relay?relay_hash=${ih}&id=${this.id}`
+          const relay = `ws://${useAddress}/relay?relay_hash=${ih}&id=${this.id}`
           const con = new WebSocket(relay)
           con.server = false
           con.active = true
@@ -748,7 +753,7 @@ class Server extends EventEmitter {
           return
         }
     } else {
-      const relay = `ws://${peer.host}:${peer.port}/relay?relay_hash=${ih}&id=${this.id}`
+      const relay = `ws://${useAddress}/relay?relay_hash=${ih}&id=${this.id}`
       const con = new WebSocket(relay)
       con.server = false
       con.active = true
@@ -1127,18 +1132,18 @@ class Server extends EventEmitter {
   onHttpRelay(req, res, par){
     // const useRelayHash = req.url.slice(0, req.url.indexOf('?')).replace('/relay/', '')
     const getRelayHash = par.has('relay_hash') ? par.get('relay_hash') : null
-    const checkRelayHash = getRelayHash && typeof(getRelayHash) === 'string' && getRelayHash.length === 20
+    const checkRelayHash = getRelayHash && typeof(getRelayHash) === 'string' && getRelayHash.length === 40
     const getId = par.has('id') ? par.get('id') : null
-    const checkId = getId && typeof(getId) === 'string' && getId.length === 20
+    const checkId = getId && typeof(getId) === 'string' && getId.length === 40
     if(!checkRelayHash && !checkId){
       res.end(bencode.encode({'failure reason': 'must have relay-hash or id'}))
     }
     const check = {}
     if(checkRelayHash){
-      check.relay_hash = this.relays.has(par.relay_hash)
+      check.relay_hash = this.relays.has(getRelayHash)
     }
     if(checkId){
-      check.id = this.sockets.has(par.id)
+      check.id = this.sockets.has(getId)
     }
     res.end(bencode.encode(check))
   }
