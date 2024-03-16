@@ -123,12 +123,14 @@ class Server extends EventEmitter {
     try {
       this.sig = ed.sign(this.test, this.user.pub, this.user.priv).toString('hex')
       this.name = this.user.pub
+      this.title = crypto.createHash('sha1').update(this.name).digest('hex')
       this.emit('ev', 'signed data using key')
     } catch (error) {
       this.emit('ev', 'key generation error: ' + error.message)
       const useCheck = this.genKey()
       this.sig = useCheck.sig
       this.name = useCheck.pub
+      this.title = crypto.createHash('sha1').update(this.name).digest('hex')
       this.emit('ev', 'new key data was created, check ' + path.join(this.dir, 'user') + ' for new key data, temp.txt will be deleted in 5 minutes')
     }
 
@@ -370,10 +372,10 @@ class Server extends EventEmitter {
             ${printClients(stats.clients)}
           `.replace(/^\s+/gm, '')) // trim left
   
-        } else if(req.method === 'GET' && req.url === '/infohash.html'){
+        } else if(req.method === 'GET' && req.url === '/hash.html'){
           res.setHeader('Content-Type', 'text/html')
           res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];for(const testing of this.hashes.keys()){arr.push(testing)};return arr;})().join('\n')}</body></html>`)
-        } else if(req.method === 'GET' && req.url === '/infohash.json'){
+        } else if(req.method === 'GET' && req.url === '/hash.json'){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(Array.from(this.hashes)))
         } else if(req.method === 'GET' && req.url === '/id.html'){
@@ -382,6 +384,18 @@ class Server extends EventEmitter {
         } else if(req.method === 'GET' && req.url === '/id.json'){
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify((() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.id)});return arr;})()))
+        } else if(req.method === 'GET' && req.url === '/address.html'){
+          res.setHeader('Content-Type', 'text/html')
+          res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.address)});return arr;})().join('\n')}</body></html>`)
+        } else if(req.method === 'GET' && req.url === '/address.json'){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify((() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.address)});return arr;})()))
+        } else if(req.method === 'GET' && req.url === '/title.html'){
+          res.setHeader('Content-Type', 'text/html')
+          res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.title)});return arr;})().join('\n')}</body></html>`)
+        } else if(req.method === 'GET' && req.url === '/title.json'){
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify((() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.title)});return arr;})()))
         } else if(req.method === 'GET' && req.url === '/name.html'){
           res.setHeader('Content-Type', 'text/html')
           res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];this.sockets.forEach((data) => {arr.push(data.name)});return arr;})().join('\n')}</body></html>`)
@@ -643,7 +657,7 @@ class Server extends EventEmitter {
             socket.relays = []
             socket.proc = false
             this.sockets.set(socket.id, socket)
-            socket.send(JSON.stringify({id: self.id, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
+            socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
             this.onRelaySocketConnection(socket)
           }
         } else {
@@ -654,7 +668,7 @@ class Server extends EventEmitter {
           socket.active = true
           socket.proc = false
           this.sockets.set(socket.id, socket)
-          socket.send(JSON.stringify({id: self.id, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
+          socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
           this.onRelaySocketConnection(socket)
         }
       } else {
@@ -935,7 +949,7 @@ class Server extends EventEmitter {
           self.triedAlready.delete(socket.id)
         }
       }
-      socket.send(JSON.stringify({id: self.id, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relay, status: self.status, sig: self.sig, action: 'session'}))
+      socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relay, status: self.status, sig: self.sig, action: 'session'}))
     }
     socket.onError = function(err){
       let useSocket
