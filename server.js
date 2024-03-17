@@ -1121,7 +1121,8 @@ class Server extends EventEmitter {
       if (err) {
         this.emit('warning', err)
         response = {
-          'failure reason': err.message
+          'failure reason': err.message,
+          relay: params.relay
         }
       }
       if (this.destroyed) return res.end()
