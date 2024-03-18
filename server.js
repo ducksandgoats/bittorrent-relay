@@ -279,7 +279,7 @@ class Server extends EventEmitter {
           res.statusCode = 200
           res.setHeader('Content-Type', 'text/plain')
           res.end('thanks for testing bittorrent-relay')
-        } else if(req.method === 'GET' && req.url === '/index.html' && this.index){
+        } else if(this.index && req.method === 'GET' && req.url === '/index.html'){
           res.statusCode = 200
           res.setHeader('Content-Type', 'text/html')
           let useText = ''
@@ -304,17 +304,19 @@ class Server extends EventEmitter {
           useStream.on('error', useError)
           useStream.on('data', useData)
           useStream.on('close', useClose)
-        } else if(req.method === 'GET' && req.url === '/stats.html' && this.stats){
+
+        } else if(this.stats && req.method === 'GET' && req.url.startsWith('/stats')){
+
           infoHashes.forEach(infoHash => {
-            const peers = self.torrents[infoHash].peers
+            const peers = this.torrents[infoHash].peers
             const keys = peers.keys
             if (keys.length > 0) activeTorrents++
-    
+
             keys.forEach(peerId => {
               // Don't mark the peer as most recently used for stats
               const peer = peers.peek(peerId)
               if (peer == null) return // peers.peek() can evict the peer
-    
+
               if (!hasOwnProperty.call(allPeers, peerId)) {
                 allPeers[peerId] = {
                   ipv4: false,
@@ -323,30 +325,30 @@ class Server extends EventEmitter {
                   leecher: false
                 }
               }
-    
+
               if (peer.ip.includes(':')) {
                 allPeers[peerId].ipv6 = true
               } else {
                 allPeers[peerId].ipv4 = true
               }
-    
+
               if (peer.complete) {
                 allPeers[peerId].seeder = true
               } else {
                 allPeers[peerId].leecher = true
               }
-    
+
               allPeers[peerId].peerId = peer.peerId
               allPeers[peerId].client = peerid(peer.peerId)
             })
           })
-    
+
           const isSeederOnly = peer => peer.seeder && peer.leecher === false
           const isLeecherOnly = peer => peer.leecher && peer.seeder === false
           const isSeederAndLeecher = peer => peer.seeder && peer.leecher
           const isIPv4 = peer => peer.ipv4
           const isIPv6 = peer => peer.ipv6
-    
+
           const stats = {
             torrents: infoHashes.length,
             activeTorrents,
@@ -358,20 +360,27 @@ class Server extends EventEmitter {
             peersIPv6: countPeers(isIPv6),
             clients: groupByClient()
           }
-    
-          res.setHeader('Content-Type', 'text/html')
-          res.end(`
-            <h1>${stats.torrents} torrents (${stats.activeTorrents} active)</h1>
-            <h2>Connected Peers: ${stats.peersAll}</h2>
-            <h3>Peers Seeding Only: ${stats.peersSeederOnly}</h3>
-            <h3>Peers Leeching Only: ${stats.peersLeecherOnly}</h3>
-            <h3>Peers Seeding & Leeching: ${stats.peersSeederAndLeecher}</h3>
-            <h3>IPv4 Peers: ${stats.peersIPv4}</h3>
-            <h3>IPv6 Peers: ${stats.peersIPv6}</h3>
-            <h3>Clients:</h3>
-            ${printClients(stats.clients)}
-          `.replace(/^\s+/gm, '')) // trim left
-  
+
+          if(req.url === '/stats.html'){
+            res.setHeader('Content-Type', 'text/html')
+            res.end(`
+              <h1>${stats.torrents} torrents (${stats.activeTorrents} active)</h1>
+              <h2>Connected Peers: ${stats.peersAll}</h2>
+              <h3>Peers Seeding Only: ${stats.peersSeederOnly}</h3>
+              <h3>Peers Leeching Only: ${stats.peersLeecherOnly}</h3>
+              <h3>Peers Seeding & Leeching: ${stats.peersSeederAndLeecher}</h3>
+              <h3>IPv4 Peers: ${stats.peersIPv4}</h3>
+              <h3>IPv6 Peers: ${stats.peersIPv6}</h3>
+              <h3>Clients:</h3>
+              ${printClients(stats.clients)}
+            `.replace(/^\s+/gm, '')) // trim left
+          } else if(req.url === '/stats.json'){
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify(stats))
+          } else {
+            throw new Error('invalid route for stats')
+          }
+
         } else if(req.method === 'GET' && req.url === '/hash.html'){
           res.setHeader('Content-Type', 'text/html')
           res.end(`<html><head><title>Relay</title></head><body>${(() => {const arr = [];for(const testing of this.hashes.keys()){arr.push(testing)};return arr;})().join('\n')}</body></html>`)
