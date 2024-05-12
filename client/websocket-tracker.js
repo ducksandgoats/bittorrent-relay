@@ -227,9 +227,9 @@ class WebSocketTracker extends Tracker {
       const useUrl = this.announceUrl
       this.announceUrl = data.relay
       useMs = 1000
-      this.socket[useUrl].close()
-      // this.destroy()
-      // this._openSocket()
+      // this.socket[useUrl].close()
+      this.destroy()
+      this._openSocket()
     } else if (data.action === 'announce') {
       this._onAnnounceResponse(data)
     } else if (data.action === 'scrape') {
