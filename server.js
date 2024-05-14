@@ -636,10 +636,21 @@ class Server extends EventEmitter {
 
       // if resource usage is high, send only the url of another tracker
       // else handle websockets as usual
-      if(req.url === '/announce'){
+      if(req.url.startsWith('/announce')){
+        if(req.url.includes('?info_hash=')){
+          const params = new URLSearchParams(req.url.slice(req.url.indexOf('?')))
+          if(!this.hashes.has(params.info_hash)){
+            socket.send(JSON.stringify({action: 'failure reason', error: 'there was a error, info hash not supported'}))
+            socket.close()
+            return
+          }
+        }
         socket.upgradeReq = req
         self.onWebSocketConnection(socket)
-      } else if(req.url.startsWith('/relay?')){
+      } else if(req.url.startsWith('/relay')){
+        if(!req.url.includes('?')){
+          return
+        }
         const params = new URLSearchParams(req.url.slice(req.url.indexOf('?')))
 
         const getRelayHash = params.has('relay_hash') ? params.get('relay_hash') : null
@@ -1413,7 +1424,7 @@ class Server extends EventEmitter {
         if (err) return cb(err)
 
         if (!response.action) response.action = common.ACTIONS.ANNOUNCE
-        if (!response.interval) response.interval = Math.ceil(this.timer.interval / 1000)
+        if (!response.interval) response.interval = Math.ceil(self.timer.interval / 1000)
 
         if (params.compact === 1) {
           const peers = response.peers
