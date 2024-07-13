@@ -639,7 +639,7 @@ class Server extends EventEmitter {
       if(req.url.startsWith('/announce')){
         if(req.url.includes('?info_hash=')){
           const params = new URLSearchParams(req.url.slice(req.url.indexOf('?')))
-          if(!this.hashes.has(params.info_hash)){
+          if(!params.has('info_hash') || !this.hashes.has(params.get('info_hash'))){
             socket.send(JSON.stringify({action: 'failure reason', error: 'there was a error, info hash not supported'}))
             socket.close()
             return
