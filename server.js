@@ -637,20 +637,24 @@ class Server extends EventEmitter {
       // if resource usage is high, send only the url of another tracker
       // else handle websockets as usual
       if(req.url.startsWith('/announce')){
+
         if(req.url.includes('?info_hash=')){
           const params = new URLSearchParams(req.url.slice(req.url.indexOf('?')))
           if(!params.has('info_hash') || !this.hashes.has(params.get('info_hash'))){
             socket.send(JSON.stringify({action: 'failure reason', error: 'there was a error, info hash not supported'}))
             socket.close()
-            return
+          } else {
+            socket.upgradeReq = req
+            self.onWebSocketConnection(socket)
           }
+        } else {
+          socket.send(JSON.stringify({action: 'failure reason', error: 'must include info_hash param'}))
+          socket.close()
         }
-        socket.upgradeReq = req
-        self.onWebSocketConnection(socket)
+
       } else if(req.url.startsWith('/relay')){
-        if(!req.url.includes('?')){
-          return
-        }
+
+        if(req.url.includes('?')){
         const params = new URLSearchParams(req.url.slice(req.url.indexOf('?')))
 
         const getRelayHash = params.has('relay_hash') ? params.get('relay_hash') : null
@@ -664,37 +668,44 @@ class Server extends EventEmitter {
         if(!checkRelayHash || !checkId || checkHasSocket || !checkHasRelay){
           socket.send(JSON.stringify({action: 'failure reason', error: 'there was a error, check the other properties of this object', relay_hash: checkRelayHash, id: checkId, socket: checkHasSocket, relay: checkHasRelay}))
           socket.close()
-          return
-        }
-        // have id and relay in the url routes
-        // have different functions to handle connections and extras
-        if(this.limit.serverConnections){
-          if(this.relays.get(getRelayHash).length < this.limit.serverConnections){
+        } else {
+          if(this.limit.serverConnections){
+            if(this.relays.get(getRelayHash).length < this.limit.serverConnections){
+              socket.id = getId
+              socket.server = true
+              socket.active = true
+              socket.relay = getRelayHash
+              socket.relays = []
+              socket.proc = false
+              this.sockets.set(socket.id, socket)
+              socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
+              this.onRelaySocketConnection(socket)
+            } else {
+              socket.send(JSON.stringify({action: 'failure reason', error: 'have reached the limit'}))
+              socket.close()
+            }
+          } else {
             socket.id = getId
             socket.server = true
-            socket.active = true
             socket.relay = getRelayHash
             socket.relays = []
+            socket.active = true
             socket.proc = false
             this.sockets.set(socket.id, socket)
             socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
             this.onRelaySocketConnection(socket)
           }
-        } else {
-          socket.id = getId
-          socket.server = true
-          socket.relay = getRelayHash
-          socket.relays = []
-          socket.active = true
-          socket.proc = false
-          this.sockets.set(socket.id, socket)
-          socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
-          this.onRelaySocketConnection(socket)
         }
+        // have id and relay in the url routes
+        // have different functions to handle connections and extras
+        } else {
+          socket.send(JSON.stringify({action: 'failure reason', error: 'must include url params'}))
+          socket.close()
+        }
+
       } else {
         socket.send(JSON.stringify({action: 'failure reason', error: 'route is not supported'}))
         socket.close()
-        return
       }
     }
     this.ws.onListening = () => {
@@ -1369,14 +1380,14 @@ class Server extends EventEmitter {
         const checkHas = this.relays.has(relay)
         if(checkHas){
           const checkGet = this.relays.get(relay).filter((data) => {return data.session})
-          params.relay = checkGet.length ? `${params.type}://${checkGet[Math.floor(Math.random() * checkGet.length)].web}/announce` : ''
+          params.relay = checkGet.length ? `${params.type}://${checkGet[Math.floor(Math.random() * checkGet.length)].web}/announce` : null
         } else {
-          params.relay = ''
+          params.relay = null
         }
         this.turnOffHTTP()
         cb(new Error('Relaying'))
       } else {
-        params.relay = ''
+        params.relay = null
         this._onAnnounce(params, cb)
       }
     } else if (params && params.action === common.ACTIONS.SCRAPE) {
