@@ -122,7 +122,7 @@ class Server extends EventEmitter {
       this.emit('ev', 'new key data was created, check ' + path.join(this.dir, 'user') + ' for new key data, temp.txt will be deleted in 5 minutes')
     }
 
-    if(!opts.hashes || !Array.isArray(opts.hashes) || !opts.hashes.every((data) => {return typeof(data) === 'string'})){
+    if(!opts.hashes || !Array.isArray(opts.hashes) || !opts.hashes.length || !opts.hashes.every((data) => {return typeof(data) === 'string'})){
       throw new Error('hashes must be an array')
     }
 
