@@ -535,7 +535,7 @@ class Server extends EventEmitter {
           if(err){
             this.emit('error', err)
           } else {
-            this.emit('ev', 'announced ' + test)
+            this.emit('ev', 'announced: ' + test)
           }
         })
       }
