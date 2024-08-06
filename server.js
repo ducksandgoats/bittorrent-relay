@@ -524,18 +524,18 @@ class Server extends EventEmitter {
       if(this.limit.serverConnections && this.relays.get(test).length >= this.limit.serverConnections){
         continue
       } else {
-        this.relay.lookup(test, (err, num) => {
-          if(err){
-            this.emit('error', err)
-          } else {
-            this.emit('ev', test + ': ' + num)
-          }
-        })
         this.relay.announce(test, this.port, (err) => {
           if(err){
             this.emit('error', err)
           } else {
             this.emit('ev', 'announced: ' + test)
+          }
+        })
+        this.relay.lookup(test, (err, num) => {
+          if(err){
+            this.emit('error', err)
+          } else {
+            this.emit('ev', test + ': ' + num)
           }
         })
       }
