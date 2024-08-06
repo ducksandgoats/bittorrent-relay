@@ -39,7 +39,6 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
  * @param {Array|String}  opts.hashes     join the relays for these hashes, array of hashes or comma separated string of hashes
  * @param {Object}  opts.user    user data like public key and private key
  * @param {Object} opts.limit       limit the connections of the relay and the hashes
- * @param {Boolean} opts.status          accept only the hashes from the hashes array in the hashes option
  * @param {Number}  opts.peersCacheLength    max amount of elements in cache, default is 1000
  * @param {Number}  opts.peersCacheTtl    max amount of time to hold elements in cache, default is 20 minutes
  * @param {Boolean}  opts.init    automatically start once instantiated
@@ -94,7 +93,6 @@ class Server extends EventEmitter {
     this.id = crypto.createHash('sha1').update(this.address).digest('hex')
     this.sockets = new Map()
     this.triedAlready = new Map()
-    this.status = Boolean(opts.status)
 
     if(opts.dir){
       if(!fs.existsSync(opts.dir)){
@@ -321,7 +319,7 @@ class Server extends EventEmitter {
               socket.relays = []
               socket.proc = false
               this.sockets.set(socket.id, socket)
-              socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
+              socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, sig: self.sig, action: 'session'}))
               this.onRelaySocketConnection(socket)
             } else {
               socket.send(JSON.stringify({action: 'failure reason', error: 'have reached the limit'}))
@@ -335,7 +333,7 @@ class Server extends EventEmitter {
             socket.active = true
             socket.proc = false
             this.sockets.set(socket.id, socket)
-            socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, status: self.status, sig: self.sig, action: 'session'}))
+            socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: getRelayHash, sig: self.sig, action: 'session'}))
             this.onRelaySocketConnection(socket)
           }
         }
@@ -623,7 +621,7 @@ class Server extends EventEmitter {
           self.triedAlready.delete(socket.id)
         }
       }
-      socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relay, status: self.status, sig: self.sig, action: 'session'}))
+      socket.send(JSON.stringify({id: self.id, title: self.title, name: self.name, address: self.address, web: self.web, host: self.host, port: self.port, domain: self.domain, relay: socket.relay, sig: self.sig, action: 'session'}))
     }
     socket.onError = function(err){
       let useSocket
@@ -1043,22 +1041,15 @@ class Server extends EventEmitter {
   _onAnnounce (params, cb) {
     const self = this
 
-    if (this.status) {
-      this._filter(params.info_hash, params, err => {
-        // Presence of `err` means that this announce request is disallowed
-        if (err) return cb(err)
+    this._filter(params.info_hash, params, err => {
+      // Presence of `err` means that this announce request is disallowed
+      if (err) return cb(err)
 
-        getOrCreateSwarm((err, swarm) => {
-          if (err) return cb(err)
-          announce(swarm)
-        })
-      })
-    } else {
       getOrCreateSwarm((err, swarm) => {
         if (err) return cb(err)
         announce(swarm)
       })
-    }
+    })
 
     // Get existing swarm, or create one if one does not exist
     function getOrCreateSwarm (cb) {
